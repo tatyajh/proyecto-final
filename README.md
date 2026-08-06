@@ -1,3 +1,11 @@
 # Proyecto final
 
-Repositorio inicial del proyecto.
+Proyecto creado con **Unity 6.3 LTS** (`6000.3.18f1`).
+
+## Abrir el proyecto
+
+1. Instala Unity Hub y el Editor `6000.3.18f1`.
+2. En Unity Hub, selecciona **Add** y elige esta carpeta.
+3. Abre el proyecto desde Unity Hub.
+
+La versión se fija en `ProjectSettings/ProjectVersion.txt` para que todo el equipo use el mismo Editor.
