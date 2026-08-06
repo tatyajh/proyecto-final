@@ -9,3 +9,5 @@ Proyecto creado con **Unity 6.3 LTS** (`6000.3.18f1`).
 3. Abre el proyecto desde Unity Hub.
 
 La versión se fija en `ProjectSettings/ProjectVersion.txt` para que todo el equipo use el mismo Editor.
+
+El punto de partida es `Assets/Scenes/Main.unity`, que ya está añadido a la configuración de compilación.
