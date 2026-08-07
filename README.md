@@ -1,10 +1,10 @@
 # Proyecto final
 
-Proyecto creado con **Unity 6.3 LTS** (`6000.3.21f1`).
+Proyecto creado con **Unity 6.3 LTS** (`6000.3.16f1`).
 
 ## Abrir el proyecto
 
-1. Instala Unity Hub y el Editor `6000.3.21f1`.
+1. Instala Unity Hub y el Editor `6000.3.16f1`.
 2. En Unity Hub, selecciona **Add** y elige esta carpeta.
 3. Abre el proyecto desde Unity Hub.
 
