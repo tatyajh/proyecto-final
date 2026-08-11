@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: efe96f20a92845f39108035e60215ded
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 267958
+  packageName: Photon Fusion - Multiplayer SDK
+  packageVersion: 2.0.12
+  assetPath: Assets/Photon/FusionDemos/Photon-Fusion-Intro-Shared-2.1.1-Stable-2177.unitypackage
+  uploadId: 945812
