@@ -5,7 +5,23 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/Main.unity
     guid: 3f0e9a727e9f4e259d2e9b0f1d71ea62
+  - enabled: 1
+    path: Assets/Scenes/Type Ypur Name.unity
+    guid: fb3f05bb7a2cd44dc9561383094eebb6
+  - enabled: 1
+    path: Assets/Scenes/Main Menu.unity
+    guid: c417fcf87e17648109f862dc7fb49367
+  - enabled: 1
+    path: Assets/Scenes/Main Settings.unity
+    guid: 457257ddaf6e34b1eba3b4b52e4b065d
+  - enabled: 1
+    path: Assets/Scenes/MultiplayerMenu.unity
+    guid: d867de090dae7455b98e77316d81b421
+  - enabled: 1
+    path: Assets/Scenes/Story Mode Menu.unity
+    guid: 0b0b7e120689c46dd9ad0d3c6585ce14
   m_configObjects: {}
+  m_UseUCBPForAssetBundles: 0
