@@ -30,7 +30,7 @@ public class PlayerController : MonoBehaviour
     private void Update()
     {
         //// importantísimo para el multiplayer NO borrar nunca
-        if (!HasStateAuthority) return;
+      //  if (!HasStateAuthority) return;
 
         Vector2 inputDir = GetInputVector();
 
