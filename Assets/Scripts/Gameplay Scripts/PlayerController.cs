@@ -1,9 +1,10 @@
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.EventSystems;
+using Fusion;
 
 [RequireComponent(typeof(NavMeshAgent))]
-public class PlayerController : MonoBehaviour
+public class PlayerController : NetworkBehaviour 
 {
     [Header("Referencias")]
     [SerializeField] private NavMeshAgent agent;
@@ -30,7 +31,7 @@ public class PlayerController : MonoBehaviour
     private void Update()
     {
         //// importantísimo para el multiplayer NO borrar nunca
-      //  if (!HasStateAuthority) return;
+        if (!HasStateAuthority) return;
 
         Vector2 inputDir = GetInputVector();
 
