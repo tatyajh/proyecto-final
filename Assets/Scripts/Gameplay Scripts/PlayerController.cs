@@ -29,6 +29,9 @@ public class PlayerController : MonoBehaviour
 
     private void Update()
     {
+        //// importantísimo para el multiplayer NO borrar nunca
+        if (!HasStateAuthority) return;
+
         Vector2 inputDir = GetInputVector();
 
         // 1. CONTROL DIRECTO (WASD o Joystick Táctil)
