@@ -47,7 +47,7 @@ public class PlayerController : NetworkBehaviour
         {
             agent.updateRotation = false;
         }
-        
+
         Vector2 inputDir = GetInputVector();
 
         // 1. CONTROL DIRECTO (WASD / Joystick Izquierdo)
