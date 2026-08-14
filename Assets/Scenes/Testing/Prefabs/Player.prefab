@@ -15,6 +15,7 @@ GameObject:
   - component: {fileID: 9159159068940239389}
   - component: {fileID: 2213284926081494491}
   - component: {fileID: 5521246235584225366}
+  - component: {fileID: 8437162951082345102}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -127,15 +128,23 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 29e8c782c8f27bc428e1827d16418538, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
   agent: {fileID: 2213284926081494491}
   joystick: {fileID: 0}
+  combatController: {fileID: 0}
   groundLayer:
     serializedVersion: 2
     m_Bits: 64
   moveSpeed: 6
   rotationSpeed: 10
+  _NetworkHealth: 0
+  _CombatReady:
+    RawValue: 0
+  _DisplayName:
+    _length: 0
+    _data:
+      Data: 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 --- !u!195 &2213284926081494491
 NavMeshAgent:
   m_ObjectHideFlags: 0
@@ -173,8 +182,49 @@ MonoBehaviour:
   SortKey: 1581200793
   SendPriority: 1
   EnableInterpolation: 1
-  Flags: 262146
+  Flags: 262402
   NestedObjects: []
   NetworkedBehaviours:
+  - {fileID: 8437162951082345102}
   - {fileID: 9159159068940239389}
   ForceRemoteRenderTimeframe: 0
+--- !u!114 &8437162951082345102
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4746224301611039267}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 158639473, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkTransform
+  _stateAuthorityChangeErrorCorrectionDelta: 0
+  SyncScale: 0
+  SyncParent: 0
+  _autoAOIOverride: 1
+  ConfigFlags: 0
+  PhysicsSettings:
+    ForecastEnabled: 1
+    DebugPhysics: 0
+    GravityForecast: 2
+    MaxExtrapolationTime: 0.15
+    MinLinearDetectedError: 0.02
+    MinAngularDetectedError: 3
+    MaxLinearError: 0
+    MaxAngularError: 0
+    LowCorrectionProgressThreshold: 0.015
+    HighErrorSimilarityThreshold: 1
+    MaxErrorTotalTime: 0.5
+    MaxRemoteSleepIgnoreTime: 0.5
+    ErrorCorrectionType: 0
+    LinearVelCorrectionMul: 1
+    AngularVelCorrectionMul: 1
+    PositionCorrectionLerp: 0.15
+    RotationCorrectionLerp: 0.15
+    Spring: 75
+    Damper: 2
+    MinImpactfulCollisionAlignment: 0.3
+    ImpactStartCorrectionTime: 0.1
+    ImpactCorrectionTimeComplete: 0.3

@@ -19,9 +19,58 @@ namespace Gameplay.Combat
 
         // 🎯 Flag para saber si el jugador está apuntando
         public bool IsAiming { get; private set; }
+        private PlayerController player;
+        private bool isSubscribed;
+
+        public void Bind(PlayerController owner)
+        {
+            UnsubscribeFromJoysticks();
+            player = owner;
+            ResolveSceneReferences();
+
+            if (isActiveAndEnabled)
+            {
+                SubscribeToJoysticks();
+            }
+        }
+
+        private void Awake()
+        {
+            if (player == null) player = GetComponent<PlayerController>();
+            ResolveSceneReferences();
+        }
+
+        private void ResolveSceneReferences()
+        {
+            if (basicAttackJoystick == null || ultimateJoystick == null)
+            {
+                foreach (AttackJoystick candidate in FindObjectsByType<AttackJoystick>(FindObjectsSortMode.None))
+                {
+                    if (candidate.name.ToLowerInvariant().Contains("ultimate")) ultimateJoystick = candidate;
+                    else basicAttackJoystick = candidate;
+                }
+            }
+
+            if (basicAimIndicator == null || ultimateAimIndicator == null)
+            {
+                foreach (SkillAimIndicator candidate in FindObjectsByType<SkillAimIndicator>(FindObjectsSortMode.None))
+                {
+                    if (candidate.name.ToLowerInvariant().Contains("ultimate")) ultimateAimIndicator = candidate;
+                    else basicAimIndicator = candidate;
+                }
+            }
+        }
 
         private void OnEnable()
         {
+            ResolveSceneReferences();
+            SubscribeToJoysticks();
+        }
+
+        private void SubscribeToJoysticks()
+        {
+            if (isSubscribed) return;
+
             if (basicAttackJoystick != null)
             {
                 basicAttackJoystick.OnAiming += HandleBasicAiming;
@@ -33,9 +82,16 @@ namespace Gameplay.Combat
                 ultimateJoystick.OnAiming += HandleUltimateAiming;
                 ultimateJoystick.OnReleased += HandleUltimateRelease;
             }
+
+            isSubscribed = basicAttackJoystick != null || ultimateJoystick != null;
         }
 
         private void OnDisable()
+        {
+            UnsubscribeFromJoysticks();
+        }
+
+        private void UnsubscribeFromJoysticks()
         {
             if (basicAttackJoystick != null)
             {
@@ -48,24 +104,31 @@ namespace Gameplay.Combat
                 ultimateJoystick.OnAiming -= HandleUltimateAiming;
                 ultimateJoystick.OnReleased -= HandleUltimateRelease;
             }
+
+            isSubscribed = false;
         }
 
         #region Basic Attack
         private void HandleBasicAiming(AimData aimData)
         {
+            if (!CanUseControls()) return;
             IsAiming = true; // Activar estado de apuntado
 
-            basicAimIndicator.ShowIndicators(attackRange);
-            basicAimIndicator.UpdateAim(aimData.Direction);
+            if (basicAimIndicator != null)
+            {
+                basicAimIndicator.ShowIndicators(attackRange);
+                basicAimIndicator.UpdateAim(aimData.Direction);
+            }
 
             RotatePlayerTowards(aimData.Direction);
         }
 
         private void HandleBasicRelease(AimData aimData)
         {
+            if (!CanUseControls()) return;
             IsAiming = false; // Desactivar estado de apuntado
 
-            basicAimIndicator.HideIndicators();
+            if (basicAimIndicator != null) basicAimIndicator.HideIndicators();
 
             Vector3 finalDirection = aimData.IsTap ? transform.forward : aimData.Direction;
             RotatePlayerTowards(finalDirection);
@@ -75,26 +138,31 @@ namespace Gameplay.Combat
 
         private void ExecuteAttack(Vector3 direction)
         {
-            Debug.Log($"Ataque Básico ejecutado hacia: {direction}");
+            player?.TryExecuteAttack(direction, false);
         }
         #endregion
 
         #region Ultimate
         private void HandleUltimateAiming(AimData aimData)
         {
+            if (!CanUseControls()) return;
             IsAiming = true; // Activar estado de apuntado
 
-            ultimateAimIndicator.ShowIndicators(ultimateRange);
-            ultimateAimIndicator.UpdateAim(aimData.Direction);
+            if (ultimateAimIndicator != null)
+            {
+                ultimateAimIndicator.ShowIndicators(ultimateRange);
+                ultimateAimIndicator.UpdateAim(aimData.Direction);
+            }
 
             RotatePlayerTowards(aimData.Direction);
         }
 
         private void HandleUltimateRelease(AimData aimData)
         {
+            if (!CanUseControls()) return;
             IsAiming = false; // Desactivar estado de apuntado
 
-            ultimateAimIndicator.HideIndicators();
+            if (ultimateAimIndicator != null) ultimateAimIndicator.HideIndicators();
 
             Vector3 finalDirection = aimData.IsTap ? transform.forward : aimData.Direction;
             RotatePlayerTowards(finalDirection);
@@ -104,7 +172,7 @@ namespace Gameplay.Combat
 
         private void ExecuteUltimate(Vector3 direction)
         {
-            Debug.Log($"ULTIMATE ejecutada hacia: {direction}");
+            player?.TryExecuteAttack(direction, true);
         }
         #endregion
 
@@ -114,6 +182,11 @@ namespace Gameplay.Combat
             {
                 transform.rotation = Quaternion.LookRotation(direction);
             }
+        }
+
+        private bool CanUseControls()
+        {
+            return player != null && player.HasLocalControl && !player.IsDefeated;
         }
     }
 }
