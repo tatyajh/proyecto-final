@@ -8,18 +8,38 @@ public class NetworkLauncher : MonoBehaviour
 
     public async Task<bool> StartGame(GameMode mode, string roomName, int sceneIndex)
     {
-        MakeSureAnthenaExists();
-        TurnOnTheControlReceptor();
-        try
+        const int maxRoomAttempts = 5;
+        for (int attempt = 1; attempt <= maxRoomAttempts; attempt++)
         {
-            await ConnectPhotonFusionToCloud(mode, roomName, sceneIndex);
-            return true;
-        }
-        catch (System.Exception ex)
-        {
-            Debug.LogError($"Photon Fusion Connection Failed: {ex.Message}");
-            return false;
+            MakeSureAnthenaExists();
+            TurnOnTheControlReceptor();
+            string candidateRoom = $"{roomName}_{attempt}";
+
+            try
+            {
+                StartGameResult result = await ConnectPhotonFusionToCloud(mode, candidateRoom, sceneIndex);
+                if (result.Ok)
+                    return true;
+
+                Debug.LogWarning($"Photon room '{candidateRoom}' unavailable: {result.ShutdownReason}");
+                DiscardRunner();
+
+                if (result.ShutdownReason != ShutdownReason.GameIsFull)
+                    break;
             }
+            catch (System.Exception ex)
+            {
+                bool roomIsFull = ex.Message.Contains("GameIsFull") || ex.Message.Contains("Game full");
+                Debug.LogWarning($"Photon room '{candidateRoom}' failed: {ex.Message}");
+                DiscardRunner();
+                if (!roomIsFull) break;
+            }
+
+            await Task.Yield();
+        }
+
+        OnlineMatchState.Set(OnlineMatchPhase.ConnectionFailed, "No fue posible encontrar una sala 1v1 disponible.");
+        return false;
     }
     
     void MakeSureAnthenaExists()
@@ -29,6 +49,7 @@ public class NetworkLauncher : MonoBehaviour
             Destroy(_networkRunner);
         }
         GameObject runnerObject = new GameObject("PhotonNetworkRunner");
+        DontDestroyOnLoad(runnerObject);
         _networkRunner = runnerObject.AddComponent<NetworkRunner>();
         
     }
@@ -38,14 +59,30 @@ public class NetworkLauncher : MonoBehaviour
         _networkRunner.ProvideInput = true;
     }
 
-private async Task ConnectPhotonFusionToCloud(GameMode mode, string roomName, int sceneIndex)
+    private void DiscardRunner()
     {
-        await _networkRunner.StartGame(new StartGameArgs()
+        if (_networkRunner != null)
+            Destroy(_networkRunner.gameObject);
+        _networkRunner = null;
+    }
+
+    private async Task<StartGameResult> ConnectPhotonFusionToCloud(GameMode mode, string roomName, int sceneIndex)
+    {
+        NetworkSceneManagerDefault sceneManager =
+            _networkRunner.gameObject.AddComponent<NetworkSceneManagerDefault>();
+        NetworkObjectProviderDefault objectProvider =
+            _networkRunner.gameObject.AddComponent<NetworkObjectProviderDefault>();
+
+        StartGameResult result = await _networkRunner.StartGame(new StartGameArgs()
         {
             GameMode = mode,
             SessionName = roomName,
+            PlayerCount = 2,
             Scene = SceneRef.FromIndex(sceneIndex),
-            SceneManager = _networkRunner.gameObject.AddComponent<NetworkSceneManagerDefault>()
+            SceneManager = sceneManager,
+            ObjectProvider = objectProvider
         });
+
+        return result;
     }
 }

@@ -23,16 +23,16 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Menus/Story Mode Menu.unity
     guid: 0b0b7e120689c46dd9ad0d3c6585ce14
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/Story Levels/Level 1.unity
     guid: 60545c314a2814e6da55f59cb5283177
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/Story Levels/Level 2.unity
     guid: 7b592902397e24de7b083ebe4fe24490
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/Story Levels/Level 3.unity
     guid: 902d3b36d16f54ab6a6adf43aa6ffc6c
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/Story Levels/Level 4.unity
     guid: 18c6f73e7082a4dbf9cdc71b294939aa
   m_configObjects: {}
