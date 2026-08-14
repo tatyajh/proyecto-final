@@ -46,6 +46,7 @@ public class LobbyManager : MonoBehaviour
 
         SetUIInteractivity(false);
         PlayModeContext.UseMultiplayer();
+        OnlineMatchState.Set(OnlineMatchPhase.Connecting, "Conectando con Photon...");
 
         int targetSceneIndex = GetSceneIndexForMode(modeName);
         string targetRoom = $"Room_{modeName}";
@@ -55,6 +56,7 @@ public class LobbyManager : MonoBehaviour
         
         if (!success)
         {
+            OnlineMatchState.Set(OnlineMatchPhase.ConnectionFailed, "No fue posible conectar con la partida.");
             PlayModeContext.UseLocalStory();
             Debug.LogError("Connection failed or timed out. Re-enabling UI.");
 

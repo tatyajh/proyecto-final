@@ -17,6 +17,7 @@ public class NetworkLauncher : MonoBehaviour
         }
         catch (System.Exception ex)
         {
+            OnlineMatchState.Set(OnlineMatchPhase.ConnectionFailed, "No fue posible conectar con Photon.");
             Debug.LogError($"Photon Fusion Connection Failed: {ex.Message}");
             return false;
             }

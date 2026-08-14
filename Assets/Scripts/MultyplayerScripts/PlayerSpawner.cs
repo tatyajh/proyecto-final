@@ -56,6 +56,8 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
             Debug.Log($"[PlayerSpawner] OnPlayerJoined detectado para el jugador local: {player}");
             SpawnLocalPlayer(runner, player);
         }
+
+        RefreshMatchState(runner);
     }
 
     // --- CALLBACK 2: Se dispara cuando la red termina de cargar la nueva escena ---
@@ -65,6 +67,24 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
         if (runner.LocalPlayer.IsValid)
         {
             SpawnLocalPlayer(runner, runner.LocalPlayer);
+        }
+        RefreshMatchState(runner);
+    }
+
+    private void RefreshMatchState(NetworkRunner runner)
+    {
+        int playerCount = 0;
+        foreach (PlayerRef ignored in runner.ActivePlayers) playerCount++;
+
+        if (playerCount >= 2)
+        {
+            OnlineMatchState.Set(OnlineMatchPhase.Playing, string.Empty);
+            if (runner.IsSharedModeMasterClient)
+                runner.SessionInfo.IsOpen = false;
+        }
+        else
+        {
+            OnlineMatchState.Set(OnlineMatchPhase.WaitingForOpponent, "Buscando oponente...");
         }
     }
 
@@ -105,12 +125,25 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
     }
 
     // --- MÉTODOS REQUERIDOS POR LA INTERFAZ ---
-    public void OnPlayerLeft(NetworkRunner runner, PlayerRef player) { }
+    public void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
+    {
+        OnlineMatchState.Set(OnlineMatchPhase.OpponentDisconnected, "El oponente se desconectó.");
+    }
     public void OnInput(NetworkRunner runner, NetworkInput input) { }
     public void OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input) { }
-    public void OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason) { }
-    public void OnConnectedToServer(NetworkRunner runner) { }
-    public void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason) { }
+    public void OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason)
+    {
+        if (PlayModeContext.Current == PlayMode.Multiplayer && OnlineMatchState.Phase != OnlineMatchPhase.Finished)
+            OnlineMatchState.Set(OnlineMatchPhase.ConnectionFailed, "La conexión con la partida terminó.");
+    }
+    public void OnConnectedToServer(NetworkRunner runner)
+    {
+        OnlineMatchState.Set(OnlineMatchPhase.WaitingForOpponent, "Buscando oponente...");
+    }
+    public void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason)
+    {
+        OnlineMatchState.Set(OnlineMatchPhase.ConnectionFailed, "Se perdió la conexión con Photon.");
+    }
     public void OnConnectRequest(NetworkRunner runner, NetworkRunnerCallbackArgs.ConnectRequest request, byte[] token) { }
     public void OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason) { }
     public void OnSessionListUpdated(NetworkRunner runner, List<SessionInfo> sessionList) { }

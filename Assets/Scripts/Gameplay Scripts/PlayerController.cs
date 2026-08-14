@@ -29,6 +29,7 @@ public class PlayerController : NetworkBehaviour
 
     [Networked] public int NetworkHealth { get; private set; }
     [Networked] public NetworkBool CombatReady { get; private set; }
+    [Networked, Capacity(24)] public NetworkString<_32> DisplayName { get; private set; }
 
     public int CurrentHealth => Object == null || !CombatReady ? localHealth : NetworkHealth;
     public bool IsDefeated => (Object == null || CombatReady) && CurrentHealth <= 0;
@@ -65,6 +66,8 @@ public class PlayerController : NetworkBehaviour
             if (mobaCamera != null)
                 mobaCamera.SetTarget(transform);
         }
+
+        ApplyPlayerColor();
     }
 
     public override void Spawned()
@@ -73,7 +76,9 @@ public class PlayerController : NetworkBehaviour
         {
             NetworkHealth = MaxHealth;
             CombatReady = true;
+            DisplayName = PlayerPrefs.GetString("PlayerName", "Player");
         }
+        ApplyPlayerColor();
     }
 
     private void Update()
@@ -86,6 +91,9 @@ public class PlayerController : NetworkBehaviour
 
         //// importantísimo para el multiplayer NO borrar nunca
         if (!controlsEnabled || IsDefeated || !CanControlPlayer() || agent == null || mainCam == null)
+            return;
+
+        if (Object != null && !OnlineMatchState.CanPlay)
             return;
 
         bool isAiming = combatController != null && combatController.IsAiming;
@@ -230,6 +238,47 @@ public class PlayerController : NetworkBehaviour
         return false;
     }
 
+    private void ApplyPlayerColor()
+    {
+        Renderer playerRenderer = GetComponentInChildren<Renderer>();
+        if (playerRenderer == null) return;
+
+        bool alternate = Object != null && Object.InputAuthority.PlayerId % 2 != 0;
+        playerRenderer.material.color = alternate
+            ? new Color(0.42f, 0.20f, 0.50f)
+            : new Color(0.16f, 0.45f, 0.31f);
+    }
+
+    private string GetDisplayName()
+    {
+        if (Object == null) return PlayerPrefs.GetString("PlayerName", "Player");
+        string networkName = DisplayName.ToString();
+        return string.IsNullOrWhiteSpace(networkName) ? "Player" : networkName;
+    }
+
+    private void DrawPlayerLabels(float scale, float width, GUIStyle label)
+    {
+        Camera cameraToUse = Camera.main;
+        if (cameraToUse == null) return;
+
+        foreach (PlayerController player in FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
+        {
+            if (!player.gameObject.activeInHierarchy) continue;
+            Vector3 screenPoint = cameraToUse.WorldToScreenPoint(player.transform.position + Vector3.up * 2.4f);
+            if (screenPoint.z <= 0f) continue;
+
+            float x = screenPoint.x / scale;
+            float y = (Screen.height - screenPoint.y) / scale;
+            float healthRatio = Mathf.Clamp01(player.CurrentHealth / (float)MaxHealth);
+            GUI.Label(new Rect(x - 90f, y - 30f, 180f, 25f), player.GetDisplayName(), label);
+            GUI.Box(new Rect(x - 65f, y, 130f, 14f), string.Empty);
+            Color previous = GUI.color;
+            GUI.color = healthRatio > 0.35f ? new Color(0.25f, 0.72f, 0.38f) : new Color(0.78f, 0.22f, 0.22f);
+            GUI.DrawTexture(new Rect(x - 62f, y + 3f, 124f * healthRatio, 8f), Texture2D.whiteTexture);
+            GUI.color = previous;
+        }
+    }
+
     private void OnGUI()
     {
         if (!CanControlPlayer()) return;
@@ -245,19 +294,29 @@ public class PlayerController : NetworkBehaviour
         };
         label.normal.textColor = new Color(0.89f, 0.87f, 0.79f);
 
+        DrawPlayerLabels(scale, width, label);
+
+        if (GUI.Button(new Rect(18f, 18f, 150f, 46f), "Salir al menú"))
+        {
+            ReturnToMainMenu();
+            return;
+        }
+
         GUI.Box(new Rect(width * 0.5f - 150f, 18f, 300f, 42f), $"VIDA  {CurrentHealth} / {MaxHealth}");
         float basicCooldown = Mathf.Max(0f, basicReadyAt - Time.unscaledTime);
         float ultimateCooldown = Mathf.Max(0f, ultimateReadyAt - Time.unscaledTime);
         GUI.Label(new Rect(width * 0.5f - 240f, 58f, 480f, 34f),
             $"Ataque: {(basicCooldown <= 0f ? "LISTO" : basicCooldown.ToString("0.0"))}    Ultimate: {(ultimateCooldown <= 0f ? "LISTA" : ultimateCooldown.ToString("0.0"))}",
             label);
-        if (Object != null && CountActivePlayers() < 2)
-            GUI.Label(new Rect(width * 0.5f - 240f, 92f, 480f, 36f), "Esperando al segundo jugador...", label);
+        if (Object != null && !string.IsNullOrWhiteSpace(OnlineMatchState.Message))
+            GUI.Label(new Rect(width * 0.5f - 280f, 92f, 560f, 36f), OnlineMatchState.Message, label);
 
         string result = IsDefeated ? "DERROTA" : HasDefeatedOpponent() ? "VICTORIA" : string.Empty;
         if (!string.IsNullOrEmpty(result))
         {
             controlsEnabled = false;
+            if (Object != null)
+                OnlineMatchState.Set(OnlineMatchPhase.Finished, result);
             GUI.Box(new Rect(width * 0.5f - 180f, 125f, 360f, 90f), string.Empty);
             GUI.Label(new Rect(width * 0.5f - 180f, 135f, 360f, 60f), result, label);
             if (GUI.Button(new Rect(width * 0.5f - 90f, 220f, 180f, 48f), "Volver al menú"))
