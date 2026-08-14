@@ -10,4 +10,15 @@ Proyecto creado con **Unity 6.3 LTS** (`6000.3.16f1`).
 
 La versión se fija en `ProjectSettings/ProjectVersion.txt` para que todo el equipo use el mismo Editor.
 
-El punto de partida es `Assets/Scenes/Main.unity`, que ya está añadido a la configuración de compilación.
+## Escena inicial y flujo
+
+El punto de partida configurado para las compilaciones es
+`Assets/Scenes/Menus/Type Ypur Name.unity`. Después de guardar el nombre del
+jugador, el juego carga `Assets/Scenes/Menus/Main Menu.unity`.
+
+Desde el menú principal se puede acceder a las opciones, al menú multijugador
+y a la selección del modo historia. Los cuatro niveles de historia están
+incluidos en la configuración de compilación.
+
+Las escenas habilitadas para compilar se encuentran en
+`ProjectSettings/EditorBuildSettings.asset`.
