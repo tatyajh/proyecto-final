@@ -68,13 +68,19 @@ public class NetworkLauncher : MonoBehaviour
 
     private async Task<StartGameResult> ConnectPhotonFusionToCloud(GameMode mode, string roomName, int sceneIndex)
     {
+        NetworkSceneManagerDefault sceneManager =
+            _networkRunner.gameObject.AddComponent<NetworkSceneManagerDefault>();
+        NetworkObjectProviderDefault objectProvider =
+            _networkRunner.gameObject.AddComponent<NetworkObjectProviderDefault>();
+
         StartGameResult result = await _networkRunner.StartGame(new StartGameArgs()
         {
             GameMode = mode,
             SessionName = roomName,
             PlayerCount = 2,
             Scene = SceneRef.FromIndex(sceneIndex),
-            SceneManager = _networkRunner.gameObject.AddComponent<NetworkSceneManagerDefault>()
+            SceneManager = sceneManager,
+            ObjectProvider = objectProvider
         });
 
         return result;

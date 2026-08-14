@@ -157,6 +157,8 @@ public class PlayerController : NetworkBehaviour
         if (!controlsEnabled || IsDefeated || !CanControlPlayer() || direction == Vector3.zero)
             return false;
 
+        ShowAttackFeedback(direction, ultimate);
+
         if (Object != null && CountActivePlayers() < 2)
             return false;
 
@@ -198,6 +200,33 @@ public class PlayerController : NetworkBehaviour
             closestTarget.ReceiveDamage(damage);
 
         return true;
+    }
+
+    private void ShowAttackFeedback(Vector3 direction, bool ultimate)
+    {
+        GameObject feedback = new GameObject(ultimate ? "UltimateFeedback" : "AttackFeedback");
+        LineRenderer line = feedback.AddComponent<LineRenderer>();
+        Shader shader = Shader.Find("Sprites/Default");
+        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
+
+        Material feedbackMaterial = shader != null ? new Material(shader) : null;
+        if (feedbackMaterial != null) line.material = feedbackMaterial;
+
+        Color color = ultimate ? new Color(0.95f, 0.75f, 0.1f, 0.95f) : new Color(0.85f, 0.18f, 0.18f, 0.95f);
+        line.startColor = color;
+        line.endColor = new Color(color.r, color.g, color.b, 0.15f);
+        line.startWidth = ultimate ? 0.45f : 0.25f;
+        line.endWidth = ultimate ? 0.16f : 0.08f;
+        line.positionCount = 2;
+        line.useWorldSpace = true;
+
+        Vector3 origin = transform.position + Vector3.up * 0.8f;
+        float range = ultimate ? 8f : 5f;
+        line.SetPosition(0, origin);
+        line.SetPosition(1, origin + direction.normalized * range);
+
+        Destroy(feedback, 0.2f);
+        if (feedbackMaterial != null) Destroy(feedbackMaterial, 0.25f);
     }
 
     private void ReceiveDamage(int damage)

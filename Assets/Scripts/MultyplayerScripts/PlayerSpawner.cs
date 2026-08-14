@@ -84,7 +84,7 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
         }
         else
         {
-            OnlineMatchState.Set(OnlineMatchPhase.WaitingForOpponent, "Buscando oponente...");
+            OnlineMatchState.Set(OnlineMatchPhase.WaitingForOpponent, "Buscando oponente... Los controles se activarán cuando llegue el rival.");
         }
     }
 
@@ -138,7 +138,7 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
     }
     public void OnConnectedToServer(NetworkRunner runner)
     {
-        OnlineMatchState.Set(OnlineMatchPhase.WaitingForOpponent, "Buscando oponente...");
+        OnlineMatchState.Set(OnlineMatchPhase.WaitingForOpponent, "Buscando oponente... Los controles se activarán cuando llegue el rival.");
     }
     public void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason)
     {
