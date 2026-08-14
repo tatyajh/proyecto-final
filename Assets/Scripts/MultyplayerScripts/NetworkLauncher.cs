@@ -45,6 +45,7 @@ public class NetworkLauncher : MonoBehaviour
         {
             GameMode = mode,
             SessionName = roomName,
+            PlayerCount = 2,
             Scene = SceneRef.FromIndex(sceneIndex),
             SceneManager = _networkRunner.gameObject.AddComponent<NetworkSceneManagerDefault>()
         });
