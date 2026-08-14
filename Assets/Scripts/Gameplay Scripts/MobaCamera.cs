@@ -44,4 +44,9 @@ public class MobaCamera : MonoBehaviour
         // 4. Fijar la rotación exacta
         transform.rotation = cameraRotation;
     }
+
+    public void SetTarget(Transform newTarget)
+    {
+        target = newTarget;
+    }
 }
