@@ -12,8 +12,8 @@ public class LobbyManager : MonoBehaviour
     [SerializeField] private NetworkLauncher _networkLauncher;
 
     [Header("Scenes Configuration")]
-    [SerializeField] private int sceneIndex1v1 = 1;
-    [SerializeField] private int sceneIndex2v2 = 2;
+    [SerializeField] private int sceneIndex1v1 = 3;
+    [SerializeField] private int sceneIndex2v2 = 3;
     [SerializeField] private int sceneIndex3v3 = 3;
 
     public static string LocalPlayerName { get; private set; }
@@ -37,6 +37,7 @@ public class LobbyManager : MonoBehaviour
     public async void OnClickSelectModeAndConnect(string modeName)
     {
         SetUIInteractivity(false);
+        PlayModeContext.UseMultiplayer();
 
         int targetSceneIndex = GetSceneIndexForMode(modeName);
         string targetRoom = $"Room_{modeName}";
@@ -46,6 +47,7 @@ public class LobbyManager : MonoBehaviour
         
         if (!success)
         {
+            PlayModeContext.UseLocalStory();
             Debug.LogError("Connection failed or timed out. Re-enabling UI.");
 
             if(conectionFailedMessage != null)
@@ -70,7 +72,7 @@ public class LobbyManager : MonoBehaviour
             case "1v1": return sceneIndex1v1;
             case "2v2": return sceneIndex2v2;
             case "3v3": return sceneIndex3v3;
-            default: return 1;
+            default: return sceneIndex1v1;
         }
     }
 

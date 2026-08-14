@@ -5,6 +5,8 @@ using TMPro;
 
 public class LevelSelectionController : MonoBehaviour
 {
+    private const string PlayableArenaScene = "Movement";
+
     [Header("Progress Config")]
     int maxUnlockedLevel = 1;
 
@@ -44,22 +46,22 @@ public class LevelSelectionController : MonoBehaviour
 
     public void OnClickLevel1()
     {
-        SelectLevel("Nivel 1: El Inicio", "Aprende los controles básicos y supera los primeros obstáculos.", "Level 1");
+        SelectLevel("Nivel 1: El Santuario", "Explora la arena, practica el movimiento y prueba tus habilidades.", PlayableArenaScene);
     }
 
     public void OnClickLevel2()
     {
-        SelectLevel("Nivel 2: La Cueva", "Cuidado con las trampas en la oscuridad.", "Level 2");
+        SelectLevel("Nivel 2: Entrenamiento", "Prototipo jugable en la arena compartida.", PlayableArenaScene);
     }
 
     public void OnClickLevel3()
     {
-        SelectLevel("Nivel 3: El Castillo", "Enfréntate a los enemigos custodios.", "Level 3");
+        SelectLevel("Nivel 3: Combate", "Prototipo jugable en la arena compartida.", PlayableArenaScene);
     }
 
     public void OnClickLevel4()
     {
-        SelectLevel("Nivel 4: La Batalla Final", "Supera la última prueba del juego.", "Level 4");
+        SelectLevel("Nivel 4: Batalla final", "Prototipo jugable en la arena compartida.", PlayableArenaScene);
     }
 
 
@@ -77,6 +79,7 @@ public class LevelSelectionController : MonoBehaviour
     {
         if (!string.IsNullOrEmpty(selectedScene)) 
         {
+            PlayModeContext.UseLocalStory();
             SceneManager.LoadScene(selectedScene);
         }
     }

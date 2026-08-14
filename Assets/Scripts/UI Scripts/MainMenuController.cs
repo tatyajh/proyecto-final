@@ -10,9 +10,9 @@ public class MainMenuController : MonoBehaviour
     public Button multiplayerButton;// Solo creamos el public button de multiplayer ya que lo desactivaremos más adelante.
 
     [Header("Escene Name")]
-    public string storymodeScene = "SeleccionDeNivel";
-    public string multiplayerScene = "LobbyMultiplayer";
-    public string settingsScene = "LobbyMultiplayer";
+    public string storymodeScene = "Story Mode Menu";
+    public string multiplayerScene = "MultiplayerMenu";
+    public string settingsScene = "Main Settings";
 
     [Header("Multiplayer control")]
     [SerializeField] public bool multiplayerState = false;

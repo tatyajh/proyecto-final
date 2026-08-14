@@ -12,7 +12,7 @@ public class SaveName : MonoBehaviour
     [Header("Escene Config")]
     public string nextEsceneName = "LevelSelection";
 
-    void start()
+    void Start()
     {
         SetWarningFalse();
     }

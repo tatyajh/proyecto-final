@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
 using Fusion;
 using Gameplay.Combat;
 
@@ -18,6 +19,7 @@ public class PlayerController : NetworkBehaviour
     [SerializeField] private float rotationSpeed = 10.0f;
 
     private bool isDirectControlActive = false;
+    private bool controlsEnabled = true;
     private Camera mainCam;
 
     private void Reset()
@@ -28,17 +30,40 @@ public class PlayerController : NetworkBehaviour
 
     private void Start()
     {
+        if (Object == null && PlayModeContext.Current == PlayMode.Multiplayer)
+        {
+            controlsEnabled = false;
+            gameObject.SetActive(false);
+            return;
+        }
+
         if (agent == null) agent = GetComponent<NavMeshAgent>();
         if (combatController == null) combatController = GetComponent<PlayerCombatController>();
+        if (joystick == null) joystick = FindFirstObjectByType<VirtualJoystick>();
         
         mainCam = Camera.main;
-        agent.speed = moveSpeed;
+        if (agent != null)
+            agent.speed = moveSpeed;
+
+        if (CanControlPlayer())
+        {
+            MobaCamera mobaCamera = FindFirstObjectByType<MobaCamera>();
+            if (mobaCamera != null)
+                mobaCamera.SetTarget(transform);
+        }
     }
 
     private void Update()
     {
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            ReturnToMainMenu();
+            return;
+        }
+
         //// importantísimo para el multiplayer NO borrar nunca
-        if (!HasStateAuthority) return;
+        if (!controlsEnabled || !CanControlPlayer() || agent == null || mainCam == null)
+            return;
 
         bool isAiming = combatController != null && combatController.IsAiming;
 
@@ -94,6 +119,22 @@ public class PlayerController : NetworkBehaviour
                 ProcessClickToMove(isAiming);
             }
         }
+    }
+
+    private bool CanControlPlayer()
+    {
+        return Object == null || HasStateAuthority;
+    }
+
+    private async void ReturnToMainMenu()
+    {
+        controlsEnabled = false;
+
+        if (Object != null && Runner != null && Runner.IsRunning)
+            await Runner.Shutdown();
+
+        PlayModeContext.UseLocalStory();
+        SceneManager.LoadScene("Main Menu");
     }
 
     private Vector2 GetInputVector()

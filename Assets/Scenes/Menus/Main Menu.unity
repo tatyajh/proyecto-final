@@ -2229,7 +2229,7 @@ MonoBehaviour:
   welcomeText: {fileID: 1020992194}
   multiplayerButton: {fileID: 1547921685}
   storymodeScene: Story Mode Menu
-  multiplayerScene: Multiplayer Menu
+  multiplayerScene: MultiplayerMenu
   settingsScene: Main Settings
   multiplayerState: 1
 --- !u!4 &1474852704

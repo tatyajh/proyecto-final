@@ -14,11 +14,12 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
     [SerializeField] private Vector3 spawnPosition = new Vector3(0, 1, 0);
 
     private NetworkRunner _runner;
+    private bool _localSpawnInProgress;
 
     private void Start()
     {
         // 1. Buscamos el Runner global que viene vivo desde la escena del Menú
-        _runner = FindObjectOfType<NetworkRunner>();
+        _runner = FindFirstObjectByType<NetworkRunner>();
 
         if (_runner != null)
         {
@@ -68,19 +69,34 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
     }
 
     // --- MÉTODO CORE: Creación de la Entidad en Red ---
-    private void SpawnLocalPlayer(NetworkRunner runner, PlayerRef player)
+    private async void SpawnLocalPlayer(NetworkRunner runner, PlayerRef player)
     {
         // En Fusion, SOLO el Host/Server o el cliente con autorización puede ejecutar runner.Spawn.
         // Verificamos si este jugador ya tiene un avatar asignado para no duplicar.
-        if (runner.GetPlayerObject(player) == null)
+        if (!_localSpawnInProgress && runner.GetPlayerObject(player) == null)
         {
             Debug.Log($"<color=green>[PlayerSpawner] EXITO: Instanciando el prefab para {player} en {spawnPosition}</color>");
 
-            // runner.Spawn crea el objeto en todos los clientes conectados a la vez
-            NetworkObject playerObject = runner.Spawn(playerPrefab, spawnPosition, Quaternion.identity, player);
+            _localSpawnInProgress = true;
+            try
+            {
+                NetworkObject playerObject = await runner.SpawnAsync(
+                    playerPrefab,
+                    spawnPosition,
+                    Quaternion.identity,
+                    player);
 
-            // Asignamos el objeto a ese cliente específico
-            runner.SetPlayerObject(player, playerObject);
+                if (playerObject != null && runner.GetPlayerObject(player) == null)
+                    runner.SetPlayerObject(player, playerObject);
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogError($"[PlayerSpawner] No fue posible crear el jugador: {exception.Message}");
+            }
+            finally
+            {
+                _localSpawnInProgress = false;
+            }
         }
     }
 

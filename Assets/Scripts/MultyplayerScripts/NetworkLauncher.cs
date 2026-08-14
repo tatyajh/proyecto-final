@@ -29,6 +29,7 @@ public class NetworkLauncher : MonoBehaviour
             Destroy(_networkRunner);
         }
         GameObject runnerObject = new GameObject("PhotonNetworkRunner");
+        DontDestroyOnLoad(runnerObject);
         _networkRunner = runnerObject.AddComponent<NetworkRunner>();
         
     }
@@ -38,14 +39,17 @@ public class NetworkLauncher : MonoBehaviour
         _networkRunner.ProvideInput = true;
     }
 
-private async Task ConnectPhotonFusionToCloud(GameMode mode, string roomName, int sceneIndex)
+    private async Task ConnectPhotonFusionToCloud(GameMode mode, string roomName, int sceneIndex)
     {
-        await _networkRunner.StartGame(new StartGameArgs()
+        StartGameResult result = await _networkRunner.StartGame(new StartGameArgs()
         {
             GameMode = mode,
             SessionName = roomName,
             Scene = SceneRef.FromIndex(sceneIndex),
             SceneManager = _networkRunner.gameObject.AddComponent<NetworkSceneManagerDefault>()
         });
+
+        if (!result.Ok)
+            throw new System.InvalidOperationException(result.ShutdownReason.ToString());
     }
 }
