@@ -36,6 +36,14 @@ public class LobbyManager : MonoBehaviour
     // Asignar a los botones del Pop-Up (1v1, 2v2, 3v3)
     public async void OnClickSelectModeAndConnect(string modeName)
     {
+        if (modeName != "1v1")
+        {
+            Debug.Log($"El modo {modeName} estará disponible después del prototipo 1v1.");
+            if (conectionFailedMessage != null)
+                conectionFailedMessage.SetActive(true);
+            return;
+        }
+
         SetUIInteractivity(false);
         PlayModeContext.UseMultiplayer();
 

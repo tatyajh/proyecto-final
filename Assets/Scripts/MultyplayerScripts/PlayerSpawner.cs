@@ -75,15 +75,19 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
         // Verificamos si este jugador ya tiene un avatar asignado para no duplicar.
         if (!_localSpawnInProgress && runner.GetPlayerObject(player) == null)
         {
-            Debug.Log($"<color=green>[PlayerSpawner] EXITO: Instanciando el prefab para {player} en {spawnPosition}</color>");
+            Vector3 assignedSpawn = spawnPosition + Vector3.right * (player.PlayerId % 2 == 0 ? -4f : 4f);
+            Quaternion assignedRotation = player.PlayerId % 2 == 0
+                ? Quaternion.LookRotation(Vector3.right)
+                : Quaternion.LookRotation(Vector3.left);
+            Debug.Log($"<color=green>[PlayerSpawner] EXITO: Instanciando el prefab para {player} en {assignedSpawn}</color>");
 
             _localSpawnInProgress = true;
             try
             {
                 NetworkObject playerObject = await runner.SpawnAsync(
                     playerPrefab,
-                    spawnPosition,
-                    Quaternion.identity,
+                    assignedSpawn,
+                    assignedRotation,
                     player);
 
                 if (playerObject != null && runner.GetPlayerObject(player) == null)
