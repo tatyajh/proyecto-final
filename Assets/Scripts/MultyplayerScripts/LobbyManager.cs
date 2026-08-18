@@ -7,6 +7,7 @@ public class LobbyManager : MonoBehaviour
     [SerializeField] private GameObject modeSelectionPopup;
     [SerializeField] private CanvasGroup popupCanvasGroup;
     [SerializeField] private GameObject conectionFailedMessage;
+    [SerializeField] private GameObject AvailabilityWarning;
 
     [Header("Network Reference")]
     [SerializeField] private NetworkLauncher _networkLauncher;
@@ -40,9 +41,10 @@ public class LobbyManager : MonoBehaviour
         {
             Debug.Log($"El modo {modeName} estará disponible después del prototipo 1v1.");
             if (conectionFailedMessage != null)
-                conectionFailedMessage.SetActive(true);
+                AvailabilityWarning.SetActive(true);
             return;
         }
+        AvailabilityWarning.SetActive(false);
 
         SetUIInteractivity(false);
         PlayModeContext.UseMultiplayer();
@@ -94,4 +96,5 @@ public class LobbyManager : MonoBehaviour
             popupCanvasGroup.blocksRaycasts = isInteractive;
         }
     }
+
 }
