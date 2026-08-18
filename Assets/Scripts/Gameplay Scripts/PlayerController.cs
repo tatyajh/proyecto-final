@@ -43,12 +43,6 @@ public class PlayerController : NetworkBehaviour
 
     private void Start()
     {
-#if UNITY_WEBGL && !UNITY_EDITOR
-        // itch.io ejecuta el juego dentro de un iframe. Capturar el teclado
-        // garantiza que WASD llegue al jugador después de enfocar el canvas.
-        WebGLInput.captureAllKeyboardInput = true;
-#endif
-
         if (Object == null && PlayModeContext.Current == PlayMode.Multiplayer)
         {
             controlsEnabled = false;
@@ -74,13 +68,6 @@ public class PlayerController : NetworkBehaviour
         }
 
         ApplyPlayerColor();
-    }
-
-    private void OnApplicationFocus(bool hasFocus)
-    {
-#if UNITY_WEBGL && !UNITY_EDITOR
-        if (hasFocus) WebGLInput.captureAllKeyboardInput = true;
-#endif
     }
 
     public override void Spawned()
@@ -384,28 +371,9 @@ public class PlayerController : NetworkBehaviour
 
     private Vector2 GetInputVector()
     {
-        // Leer las teclas directamente evita diferencias del Input Manager
-        // entre el Editor y el reproductor WebGL embebido en itch.io.
-        float h = 0f;
-        float v = 0f;
-        if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) h -= 1f;
-        if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) h += 1f;
-        if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) v -= 1f;
-        if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) v += 1f;
-
-        // Conservamos los ejes configurados por el proyecto como respaldo
-        // para mandos y para versiones del Editor que los reporten primero.
-        h += Input.GetAxisRaw("Horizontal");
-        v += Input.GetAxisRaw("Vertical");
-        Vector2 keyboardInput = Vector2.ClampMagnitude(new Vector2(h, v), 1f);
-
-        if (keyboardInput.sqrMagnitude > 0.01f && EventSystem.current != null &&
-            EventSystem.current.currentSelectedGameObject != null)
-        {
-            // Un campo o botón seleccionado puede quedarse con el foco al
-            // cambiar de menú. Al detectar movimiento devolvemos el foco al juego.
-            EventSystem.current.SetSelectedGameObject(null);
-        }
+        float h = Input.GetAxisRaw("Horizontal");
+        float v = Input.GetAxisRaw("Vertical");
+        Vector2 keyboardInput = new Vector2(h, v).normalized;
 
         Vector2 joystickInput = joystick != null ? joystick.InputVector : Vector2.zero;
 
