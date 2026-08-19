@@ -38,7 +38,8 @@ public static class CorruptedFoliageInstaller
 
     private static void Install(Scene scene)
     {
-        if (scene.name != "Movement" || GameObject.Find("Generated Corrupted Foliage") != null)
+        bool isPlayableArena = scene.name == "OnlineArena" || scene.name == "Movement";
+        if (!isPlayableArena || GameObject.Find("Generated Corrupted Foliage") != null)
             return;
 
         Texture2D grassTexture = Resources.Load<Texture2D>("Foliage/grass_corrupted");

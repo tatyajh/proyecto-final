@@ -325,6 +325,12 @@ public class PlayerController : NetworkBehaviour
         Color primary = CharacterColors[characterIndex];
         Color secondary = Color.Lerp(primary, new Color(0.82f, 0.78f, 0.66f), 0.45f);
 
+        // Por ahora solo existe un modelo de personaje real en el repositorio.
+        // Se utiliza para Heliandra y se conserva la silueta provisional para
+        // las demás selecciones hasta que arte entregue sus respectivos FBX.
+        if (characterIndex == 0 && TryCreateImportedCharacterVisual())
+            return;
+
         prototypeVisual = new GameObject($"Prototype {CharacterNames[characterIndex]}").transform;
         prototypeVisual.SetParent(transform, false);
         prototypeVisual.localPosition = Vector3.zero;
@@ -342,6 +348,46 @@ public class PlayerController : NetworkBehaviour
             CreateVisualPart("Hood", PrimitiveType.Sphere, new Vector3(0f, 0.98f, 0.05f), new Vector3(0.54f, 0.42f, 0.50f), primary * 0.7f);
         else if (characterIndex == 2 || characterIndex == 5)
             CreateVisualPart("Crown", PrimitiveType.Cylinder, new Vector3(0f, 1.18f, 0f), new Vector3(0.28f, 0.10f, 0.28f), secondary);
+    }
+
+    private bool TryCreateImportedCharacterVisual()
+    {
+        GameObject characterPrefab = Resources.Load<GameObject>("Characters/CampanaPrototype");
+        if (characterPrefab == null) return false;
+
+        GameObject instance = Instantiate(characterPrefab, transform);
+        instance.name = "Prototype Heliandra";
+        instance.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+
+        foreach (Collider visualCollider in instance.GetComponentsInChildren<Collider>(true))
+            Destroy(visualCollider);
+
+        prototypeVisual = instance.transform;
+        FitImportedCharacterToCollider(instance);
+        return true;
+    }
+
+    private void FitImportedCharacterToCollider(GameObject character)
+    {
+        Renderer[] renderers = character.GetComponentsInChildren<Renderer>(true);
+        if (renderers.Length == 0) return;
+
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+
+        if (bounds.size.y <= 0.001f) return;
+
+        const float desiredHeight = 2f;
+        float scale = desiredHeight / bounds.size.y;
+        character.transform.localScale *= scale;
+
+        bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+
+        float colliderBottom = transform.position.y - 1f;
+        character.transform.position += Vector3.up * (colliderBottom - bounds.min.y);
     }
 
     private void CreateVisualPart(string partName, PrimitiveType primitiveType, Vector3 position, Vector3 scale, Color color)
