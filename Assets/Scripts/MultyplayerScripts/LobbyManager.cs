@@ -7,7 +7,7 @@ using UnityEngine.SceneManagement;
 
 public class LobbyManager : MonoBehaviour
 {
-    private const int AvailableCharacterCount = 1;
+    private const int QuietmorCharacterIndex = 3;
     private static readonly string[] CharacterNames =
     {
         "Heliandra", "Lunara", "Solmara", "Quietmor", "Acatheria", "Terramor"
@@ -35,9 +35,9 @@ public class LobbyManager : MonoBehaviour
     private void Start()
     {
         LocalPlayerName = PlayerPrefs.GetString("PlayerName", "Player");
-        selectedCharacterIndex = PlayerPrefs.GetInt("SelectedCharacterIndex", 0);
+        selectedCharacterIndex = PlayerPrefs.GetInt("SelectedCharacterIndex", QuietmorCharacterIndex);
         if (!IsCharacterAvailable(selectedCharacterIndex))
-            selectedCharacterIndex = 0;
+            selectedCharacterIndex = QuietmorCharacterIndex;
         BuildCharacterSelection();
         ConfigureModeAvailability();
         ConfigureModePopupLayout();
@@ -241,7 +241,7 @@ public class LobbyManager : MonoBehaviour
 
     private static bool IsCharacterAvailable(int characterIndex)
     {
-        return characterIndex >= 0 && characterIndex < AvailableCharacterCount;
+        return characterIndex == QuietmorCharacterIndex;
     }
 
     private void ConfigureModePopupLayout()

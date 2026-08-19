@@ -326,9 +326,9 @@ public class PlayerController : NetworkBehaviour
         Color secondary = Color.Lerp(primary, new Color(0.82f, 0.78f, 0.66f), 0.45f);
 
         // Por ahora solo existe un modelo de personaje real en el repositorio.
-        // Se utiliza para Heliandra y se conserva la silueta provisional para
+        // Se utiliza para Quietmor y se conserva la silueta provisional para
         // las demás selecciones hasta que arte entregue sus respectivos FBX.
-        if (characterIndex == 0 && TryCreateImportedCharacterVisual())
+        if (characterIndex == 3 && TryCreateImportedCharacterVisual())
             return;
 
         prototypeVisual = new GameObject($"Prototype {CharacterNames[characterIndex]}").transform;
@@ -356,7 +356,7 @@ public class PlayerController : NetworkBehaviour
         if (characterPrefab == null) return false;
 
         GameObject instance = Instantiate(characterPrefab, transform);
-        instance.name = "Prototype Heliandra";
+        instance.name = "Prototype Quietmor";
         instance.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
 
         foreach (Collider visualCollider in instance.GetComponentsInChildren<Collider>(true))
@@ -413,9 +413,9 @@ public class PlayerController : NetworkBehaviour
     private int GetSelectedCharacterIndex()
     {
         if (Object == null || Object.HasInputAuthority)
-            return Mathf.Clamp(PlayerPrefs.GetInt("SelectedCharacterIndex", 0), 0, CharacterNames.Length - 1);
+            return Mathf.Clamp(PlayerPrefs.GetInt("SelectedCharacterIndex", 3), 0, CharacterNames.Length - 1);
 
-        return Mathf.Abs(Object.InputAuthority.PlayerId) % CharacterNames.Length;
+        return 3;
     }
 
     private string GetDisplayName()
