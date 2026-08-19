@@ -11,7 +11,7 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
     [SerializeField] private NetworkPrefabRef playerPrefab;
 
     [Header("Spawn Settings")]
-    [SerializeField] private Vector3 spawnPosition = new Vector3(0, 1, 0);
+    [SerializeField] private Vector3 spawnPosition = new Vector3(48f, 0f, -6f);
 
     private NetworkRunner _runner;
     private bool _localSpawnInProgress;

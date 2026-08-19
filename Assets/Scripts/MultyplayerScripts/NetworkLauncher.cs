@@ -1,5 +1,7 @@
 using UnityEngine;
 using Fusion;
+using Photon.Realtime;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 public class NetworkLauncher : MonoBehaviour
@@ -8,37 +10,29 @@ public class NetworkLauncher : MonoBehaviour
 
     public async Task<bool> StartGame(GameMode mode, string roomName, int sceneIndex)
     {
-        const int maxRoomAttempts = 5;
-        for (int attempt = 1; attempt <= maxRoomAttempts; attempt++)
+        MakeSureAnthenaExists();
+        TurnOnTheControlReceptor();
+        float startedAt = Time.realtimeSinceStartup;
+
+        try
         {
-            MakeSureAnthenaExists();
-            TurnOnTheControlReceptor();
-            string candidateRoom = $"{roomName}_{attempt}";
+            StartGameResult result = await ConnectPhotonFusionToCloud(mode, roomName, sceneIndex);
+            float elapsed = Time.realtimeSinceStartup - startedAt;
+            Debug.Log($"[NetworkLauncher] Matchmaking 1v1 terminó en {elapsed:F2} s. Resultado: {result.ShutdownReason}");
 
-            try
-            {
-                StartGameResult result = await ConnectPhotonFusionToCloud(mode, candidateRoom, sceneIndex);
-                if (result.Ok)
-                    return true;
+            if (result.Ok)
+                return true;
 
-                Debug.LogWarning($"Photon room '{candidateRoom}' unavailable: {result.ShutdownReason}");
-                DiscardRunner();
-
-                if (result.ShutdownReason != ShutdownReason.GameIsFull)
-                    break;
-            }
-            catch (System.Exception ex)
-            {
-                bool roomIsFull = ex.Message.Contains("GameIsFull") || ex.Message.Contains("Game full");
-                Debug.LogWarning($"Photon room '{candidateRoom}' failed: {ex.Message}");
-                DiscardRunner();
-                if (!roomIsFull) break;
-            }
-
-            await Task.Yield();
+            Debug.LogWarning($"Photon matchmaking failed: {result.ShutdownReason}");
+        }
+        catch (System.Exception ex)
+        {
+            float elapsed = Time.realtimeSinceStartup - startedAt;
+            Debug.LogWarning($"Photon matchmaking failed after {elapsed:F2} s: {ex.Message}");
         }
 
-        OnlineMatchState.Set(OnlineMatchPhase.ConnectionFailed, "No fue posible encontrar una sala 1v1 disponible.");
+        DiscardRunner();
+        OnlineMatchState.Set(OnlineMatchPhase.ConnectionFailed, "No fue posible encontrar una partida 1v1.");
         return false;
     }
     
@@ -76,8 +70,19 @@ public class NetworkLauncher : MonoBehaviour
         StartGameResult result = await _networkRunner.StartGame(new StartGameArgs()
         {
             GameMode = mode,
-            SessionName = roomName,
+            // Sin nombre fijo, Fusion llena primero una sala 1v1 compatible y
+            // crea una nueva únicamente cuando no existe ninguna disponible.
+            SessionName = null,
+            SessionProperties = new Dictionary<string, SessionProperty>
+            {
+                { "mode", roomName }
+            },
+            MatchmakingMode = MatchmakingMode.FillRoom,
+            EnableClientSessionCreation = true,
             PlayerCount = 2,
+            IsOpen = true,
+            IsVisible = true,
+            UseCachedRegions = true,
             Scene = SceneRef.FromIndex(sceneIndex),
             SceneManager = sceneManager,
             ObjectProvider = objectProvider

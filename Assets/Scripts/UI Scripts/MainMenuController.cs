@@ -17,14 +17,24 @@ public class MainMenuController : MonoBehaviour
     [Header("Multiplayer control")]
     [SerializeField] public bool multiplayerState = false;
 
+    [Header("Prototype availability")]
+    [SerializeField] private bool storyModeAvailable = false;
+    [SerializeField] private bool settingsAvailable = false;
+
     void Start()
     {
         ShowWelcomeText();
         MultiplayerButtonSetAvailability();
+        ConfigureUnavailableFeatures();
     }
 
     public void GoToStorymode()
     {
+        if (!storyModeAvailable)
+        {
+            Debug.Log("El modo Historia estará disponible próximamente.");
+            return;
+        }
         SceneManager.LoadScene(storymodeScene);
     }
 
@@ -35,6 +45,11 @@ public class MainMenuController : MonoBehaviour
     
     public void GoToSettings()
     {
+        if (!settingsAvailable)
+        {
+            Debug.Log("Settings estará disponible próximamente.");
+            return;
+        }
         SceneManager.LoadScene(settingsScene);
     }
 
@@ -53,6 +68,25 @@ public class MainMenuController : MonoBehaviour
          if (multiplayerButton != null)
         {
             multiplayerButton.interactable = multiplayerState; 
+         }
+    }
+
+    private void ConfigureUnavailableFeatures()
+    {
+        foreach (Button button in FindObjectsByType<Button>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+            if (label == null) continue;
+
+            string feature = label.text.Trim();
+            bool unavailable = (!settingsAvailable && feature.Equals("Settings", System.StringComparison.OrdinalIgnoreCase)) ||
+                               (!storyModeAvailable && feature.Equals("Story Mode", System.StringComparison.OrdinalIgnoreCase));
+            if (!unavailable)
+                continue;
+
+            button.interactable = false;
+            label.text = feature + " · Próximamente";
+            label.color = new Color(0.55f, 0.53f, 0.50f, 1f);
         }
     }
 }

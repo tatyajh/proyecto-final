@@ -9,6 +9,19 @@ using Gameplay.Combat;
 public class PlayerController : NetworkBehaviour 
 {
     public const int MaxHealth = 100;
+    private static readonly string[] CharacterNames =
+    {
+        "Heliandra", "Lunara", "Solmara", "Quietmor", "Acatheria", "Terramor"
+    };
+    private static readonly Color[] CharacterColors =
+    {
+        new Color(0.78f, 0.35f, 0.20f),
+        new Color(0.34f, 0.48f, 0.76f),
+        new Color(0.83f, 0.66f, 0.20f),
+        new Color(0.34f, 0.25f, 0.48f),
+        new Color(0.30f, 0.64f, 0.45f),
+        new Color(0.43f, 0.30f, 0.20f)
+    };
 
     [Header("Referencias")]
     [SerializeField] private NavMeshAgent agent;
@@ -26,6 +39,8 @@ public class PlayerController : NetworkBehaviour
     private int localHealth = MaxHealth;
     private float basicReadyAt;
     private float ultimateReadyAt;
+    private Transform prototypeVisual;
+    private int prototypeCharacterIndex = -1;
 
     [Networked] public int NetworkHealth { get; private set; }
     [Networked] public NetworkBool CombatReady { get; private set; }
@@ -43,6 +58,12 @@ public class PlayerController : NetworkBehaviour
 
     private void Start()
     {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // itch.io ejecuta el juego dentro de un iframe. Capturar el teclado
+        // garantiza que WASD llegue al jugador después de enfocar el canvas.
+        WebGLInput.captureAllKeyboardInput = true;
+#endif
+
         if (Object == null && PlayModeContext.Current == PlayMode.Multiplayer)
         {
             controlsEnabled = false;
@@ -68,6 +89,13 @@ public class PlayerController : NetworkBehaviour
         }
 
         ApplyPlayerColor();
+    }
+
+    private void OnApplicationFocus(bool hasFocus)
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        if (hasFocus) WebGLInput.captureAllKeyboardInput = true;
+#endif
     }
 
     public override void Spawned()
@@ -157,8 +185,6 @@ public class PlayerController : NetworkBehaviour
         if (!controlsEnabled || IsDefeated || !CanControlPlayer() || direction == Vector3.zero)
             return false;
 
-        ShowAttackFeedback(direction, ultimate);
-
         if (Object != null && CountActivePlayers() < 2)
             return false;
 
@@ -169,6 +195,11 @@ public class PlayerController : NetworkBehaviour
 
         if (ultimate) ultimateReadyAt = now + 8f;
         else basicReadyAt = now + 1f;
+
+        if (Object != null)
+            RPC_ShowAttackFeedback(direction.normalized, ultimate);
+        else
+            ShowAttackFeedback(direction.normalized, ultimate);
 
         float range = ultimate ? 8f : 5f;
         float radius = ultimate ? 1.25f : 0.65f;
@@ -200,6 +231,12 @@ public class PlayerController : NetworkBehaviour
             closestTarget.ReceiveDamage(damage);
 
         return true;
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_ShowAttackFeedback(Vector3 direction, bool ultimate)
+    {
+        ShowAttackFeedback(direction, ultimate);
     }
 
     private void ShowAttackFeedback(Vector3 direction, bool ultimate)
@@ -269,13 +306,70 @@ public class PlayerController : NetworkBehaviour
 
     private void ApplyPlayerColor()
     {
-        Renderer playerRenderer = GetComponentInChildren<Renderer>();
-        if (playerRenderer == null) return;
+        EnsurePrototypeCharacterVisual();
+    }
 
-        bool alternate = Object != null && Object.InputAuthority.PlayerId % 2 != 0;
-        playerRenderer.material.color = alternate
-            ? new Color(0.42f, 0.20f, 0.50f)
-            : new Color(0.16f, 0.45f, 0.31f);
+    private void EnsurePrototypeCharacterVisual()
+    {
+        int characterIndex = GetSelectedCharacterIndex();
+        if (prototypeVisual != null && prototypeCharacterIndex == characterIndex) return;
+
+        if (prototypeVisual != null)
+            Destroy(prototypeVisual.gameObject);
+
+        MeshRenderer capsuleRenderer = GetComponent<MeshRenderer>();
+        if (capsuleRenderer != null)
+            capsuleRenderer.enabled = false;
+
+        prototypeCharacterIndex = characterIndex;
+        Color primary = CharacterColors[characterIndex];
+        Color secondary = Color.Lerp(primary, new Color(0.82f, 0.78f, 0.66f), 0.45f);
+
+        prototypeVisual = new GameObject($"Prototype {CharacterNames[characterIndex]}").transform;
+        prototypeVisual.SetParent(transform, false);
+        prototypeVisual.localPosition = Vector3.zero;
+
+        CreateVisualPart("Torso", PrimitiveType.Cube, new Vector3(0f, 0.15f, 0f), new Vector3(0.68f, 0.82f, 0.42f), primary);
+        CreateVisualPart("Head", PrimitiveType.Sphere, new Vector3(0f, 0.88f, 0f), Vector3.one * 0.42f, secondary);
+        CreateVisualPart("Left Arm", PrimitiveType.Capsule, new Vector3(-0.48f, 0.12f, 0f), new Vector3(0.18f, 0.48f, 0.18f), secondary);
+        CreateVisualPart("Right Arm", PrimitiveType.Capsule, new Vector3(0.48f, 0.12f, 0f), new Vector3(0.18f, 0.48f, 0.18f), secondary);
+        CreateVisualPart("Left Leg", PrimitiveType.Capsule, new Vector3(-0.20f, -0.55f, 0f), new Vector3(0.22f, 0.55f, 0.22f), primary * 0.72f);
+        CreateVisualPart("Right Leg", PrimitiveType.Capsule, new Vector3(0.20f, -0.55f, 0f), new Vector3(0.22f, 0.55f, 0.22f), primary * 0.72f);
+
+        // Una silueta distinta por personaje ayuda a identificar la elección
+        // mientras llegan los modelos finales del equipo de arte.
+        if (characterIndex == 1 || characterIndex == 3)
+            CreateVisualPart("Hood", PrimitiveType.Sphere, new Vector3(0f, 0.98f, 0.05f), new Vector3(0.54f, 0.42f, 0.50f), primary * 0.7f);
+        else if (characterIndex == 2 || characterIndex == 5)
+            CreateVisualPart("Crown", PrimitiveType.Cylinder, new Vector3(0f, 1.18f, 0f), new Vector3(0.28f, 0.10f, 0.28f), secondary);
+    }
+
+    private void CreateVisualPart(string partName, PrimitiveType primitiveType, Vector3 position, Vector3 scale, Color color)
+    {
+        GameObject part = GameObject.CreatePrimitive(primitiveType);
+        part.name = partName;
+        part.layer = gameObject.layer;
+        part.transform.SetParent(prototypeVisual, false);
+        part.transform.localPosition = position;
+        part.transform.localScale = scale;
+
+        Collider partCollider = part.GetComponent<Collider>();
+        if (partCollider != null) Destroy(partCollider);
+
+        Renderer renderer = part.GetComponent<Renderer>();
+        Material material = new Material(Shader.Find("Standard"));
+        material.color = color;
+        material.EnableKeyword("_EMISSION");
+        material.SetColor("_EmissionColor", color * 0.18f);
+        renderer.sharedMaterial = material;
+    }
+
+    private int GetSelectedCharacterIndex()
+    {
+        if (Object == null || Object.HasInputAuthority)
+            return Mathf.Clamp(PlayerPrefs.GetInt("SelectedCharacterIndex", 0), 0, CharacterNames.Length - 1);
+
+        return Mathf.Abs(Object.InputAuthority.PlayerId) % CharacterNames.Length;
     }
 
     private string GetDisplayName()
@@ -315,15 +409,21 @@ public class PlayerController : NetworkBehaviour
         float scale = Mathf.Clamp(Screen.width / 960f, 0.8f, 1.6f);
         GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
         float width = Screen.width / scale;
-        GUIStyle label = new GUIStyle(GUI.skin.label)
+        GUIStyle playerLabel = new GUIStyle(GUI.skin.label)
         {
-            fontSize = 22,
+            fontSize = 20,
             fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleCenter
         };
-        label.normal.textColor = new Color(0.89f, 0.87f, 0.79f);
+        playerLabel.normal.textColor = new Color(0.94f, 0.91f, 0.82f);
 
-        DrawPlayerLabels(scale, width, label);
+        GUIStyle hudLabel = new GUIStyle(playerLabel)
+        {
+            fontSize = 18
+        };
+        hudLabel.normal.textColor = new Color(0.86f, 0.67f, 0.24f);
+
+        DrawPlayerLabels(scale, width, playerLabel);
 
         if (GUI.Button(new Rect(18f, 18f, 150f, 46f), "Salir al menú"))
         {
@@ -334,11 +434,20 @@ public class PlayerController : NetworkBehaviour
         GUI.Box(new Rect(width * 0.5f - 150f, 18f, 300f, 42f), $"VIDA  {CurrentHealth} / {MaxHealth}");
         float basicCooldown = Mathf.Max(0f, basicReadyAt - Time.unscaledTime);
         float ultimateCooldown = Mathf.Max(0f, ultimateReadyAt - Time.unscaledTime);
-        GUI.Label(new Rect(width * 0.5f - 240f, 58f, 480f, 34f),
+        GUI.Box(new Rect(width * 0.5f - 255f, 62f, 510f, 34f), string.Empty);
+        GUI.Label(new Rect(width * 0.5f - 245f, 62f, 490f, 34f),
             $"Ataque: {(basicCooldown <= 0f ? "LISTO" : basicCooldown.ToString("0.0"))}    Ultimate: {(ultimateCooldown <= 0f ? "LISTA" : ultimateCooldown.ToString("0.0"))}",
-            label);
+            hudLabel);
         if (Object != null && !string.IsNullOrWhiteSpace(OnlineMatchState.Message))
-            GUI.Label(new Rect(width * 0.5f - 280f, 92f, 560f, 36f), OnlineMatchState.Message, label);
+        {
+            GUIStyle statusLabel = new GUIStyle(hudLabel)
+            {
+                fontSize = 16,
+                wordWrap = true
+            };
+            GUI.Box(new Rect(width * 0.5f - 300f, 102f, 600f, 58f), string.Empty);
+            GUI.Label(new Rect(width * 0.5f - 290f, 104f, 580f, 54f), OnlineMatchState.Message, statusLabel);
+        }
 
         string result = IsDefeated ? "DERROTA" : HasDefeatedOpponent() ? "VICTORIA" : string.Empty;
         if (!string.IsNullOrEmpty(result))
@@ -347,8 +456,10 @@ public class PlayerController : NetworkBehaviour
             if (Object != null)
                 OnlineMatchState.Set(OnlineMatchPhase.Finished, result);
             GUI.Box(new Rect(width * 0.5f - 180f, 125f, 360f, 90f), string.Empty);
-            GUI.Label(new Rect(width * 0.5f - 180f, 135f, 360f, 60f), result, label);
-            if (GUI.Button(new Rect(width * 0.5f - 90f, 220f, 180f, 48f), "Volver al menú"))
+            GUI.Label(new Rect(width * 0.5f - 180f, 135f, 360f, 60f), result, hudLabel);
+            if (GUI.Button(new Rect(width * 0.5f - 195f, 220f, 185f, 48f), "Jugar otra vez"))
+                ReturnToMultiplayerLobby();
+            if (GUI.Button(new Rect(width * 0.5f + 10f, 220f, 185f, 48f), "Salir al menú"))
                 ReturnToMainMenu();
         }
     }
@@ -369,11 +480,41 @@ public class PlayerController : NetworkBehaviour
         SceneManager.LoadScene("Main Menu");
     }
 
+    private async void ReturnToMultiplayerLobby()
+    {
+        controlsEnabled = false;
+
+        if (Object != null && Runner != null && Runner.IsRunning)
+            await Runner.Shutdown();
+
+        OnlineMatchState.Reset();
+        SceneManager.LoadScene("MultiplayerMenu");
+    }
+
     private Vector2 GetInputVector()
     {
-        float h = Input.GetAxisRaw("Horizontal");
-        float v = Input.GetAxisRaw("Vertical");
-        Vector2 keyboardInput = new Vector2(h, v).normalized;
+        // Leer las teclas directamente evita diferencias del Input Manager
+        // entre el Editor y el reproductor WebGL embebido en itch.io.
+        float h = 0f;
+        float v = 0f;
+        if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) h -= 1f;
+        if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) h += 1f;
+        if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) v -= 1f;
+        if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) v += 1f;
+
+        // Conservamos los ejes configurados por el proyecto como respaldo
+        // para mandos y para versiones del Editor que los reporten primero.
+        h += Input.GetAxisRaw("Horizontal");
+        v += Input.GetAxisRaw("Vertical");
+        Vector2 keyboardInput = Vector2.ClampMagnitude(new Vector2(h, v), 1f);
+
+        if (keyboardInput.sqrMagnitude > 0.01f && EventSystem.current != null &&
+            EventSystem.current.currentSelectedGameObject != null)
+        {
+            // Un campo o botón seleccionado puede quedarse con el foco al
+            // cambiar de menú. Al detectar movimiento devolvemos el foco al juego.
+            EventSystem.current.SetSelectedGameObject(null);
+        }
 
         Vector2 joystickInput = joystick != null ? joystick.InputVector : Vector2.zero;
 

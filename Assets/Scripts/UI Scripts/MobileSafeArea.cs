@@ -34,9 +34,33 @@ public sealed class MobileSafeArea : MonoBehaviour
     private void Awake()
     {
         canvas = GetComponent<Canvas>();
+        ConfigureGameplayControls();
         foreach (RectTransform child in transform)
             basePositions[child] = child.anchoredPosition;
         Apply();
+    }
+
+    private void ConfigureGameplayControls()
+    {
+        ConfigureControl("MovementJoystick", new Vector2(230f, 200f), new Vector2(340f, 340f), 0.46f, false);
+        ConfigureControl("BasicAttackJoystick", new Vector2(-230f, 200f), new Vector2(340f, 340f), 0.46f, true);
+        ConfigureControl("UltimateJoystick", new Vector2(-150f, 390f), new Vector2(260f, 260f), 0.42f, true);
+    }
+
+    private void ConfigureControl(string controlName, Vector2 position, Vector2 size, float scale, bool anchorRight)
+    {
+        Transform control = transform.Find(controlName);
+        if (control == null) return;
+
+        RectTransform rect = control.GetComponent<RectTransform>();
+        if (rect == null) return;
+        Vector2 anchor = new Vector2(anchorRight ? 1f : 0f, 0f);
+        rect.anchorMin = anchor;
+        rect.anchorMax = anchor;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = position;
+        rect.sizeDelta = size;
+        rect.localScale = Vector3.one * scale;
     }
 
     private void Update()

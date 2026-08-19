@@ -20,11 +20,18 @@ namespace Gameplay.Combat
         // 🎯 Flag para saber si el jugador está apuntando
         public bool IsAiming { get; private set; }
         private PlayerController player;
+        private bool isSubscribed;
 
         public void Bind(PlayerController owner)
         {
+            UnsubscribeFromJoysticks();
             player = owner;
             ResolveSceneReferences();
+
+            if (isActiveAndEnabled)
+            {
+                SubscribeToJoysticks();
+            }
         }
 
         private void Awake()
@@ -56,6 +63,14 @@ namespace Gameplay.Combat
 
         private void OnEnable()
         {
+            ResolveSceneReferences();
+            SubscribeToJoysticks();
+        }
+
+        private void SubscribeToJoysticks()
+        {
+            if (isSubscribed) return;
+
             if (basicAttackJoystick != null)
             {
                 basicAttackJoystick.OnAiming += HandleBasicAiming;
@@ -67,9 +82,16 @@ namespace Gameplay.Combat
                 ultimateJoystick.OnAiming += HandleUltimateAiming;
                 ultimateJoystick.OnReleased += HandleUltimateRelease;
             }
+
+            isSubscribed = basicAttackJoystick != null || ultimateJoystick != null;
         }
 
         private void OnDisable()
+        {
+            UnsubscribeFromJoysticks();
+        }
+
+        private void UnsubscribeFromJoysticks()
         {
             if (basicAttackJoystick != null)
             {
@@ -82,6 +104,8 @@ namespace Gameplay.Combat
                 ultimateJoystick.OnAiming -= HandleUltimateAiming;
                 ultimateJoystick.OnReleased -= HandleUltimateRelease;
             }
+
+            isSubscribed = false;
         }
 
         #region Basic Attack
