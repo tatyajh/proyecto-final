@@ -4,6 +4,8 @@ using UnityEngine.SceneManagement;
 
 public class SaveName : MonoBehaviour
 {
+    private bool isLoading;
+
     //La casilla donde el usuario escribe.
     [Header("UI Reference")]
     public TMP_InputField campoDeTexto;
@@ -21,8 +23,12 @@ public class SaveName : MonoBehaviour
     {
         
            // Validamos que el jugador no deje el nombre vacío
+        if (isLoading || campoDeTexto == null)
+            return;
+
         if (!string.IsNullOrEmpty(campoDeTexto.text.Trim()))
         {
+            isLoading = true;
             SetWarningFalse();
             SaveNameAction();
             SceneManager.LoadScene(nextEsceneName);
@@ -30,7 +36,8 @@ public class SaveName : MonoBehaviour
         else
         {
             Debug.LogWarning("Please enter your name before continue");
-            errorMessage.SetActive(true);
+            if (errorMessage != null)
+                errorMessage.SetActive(true);
         }
     }
 

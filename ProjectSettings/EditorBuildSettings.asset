@@ -15,8 +15,8 @@ EditorBuildSettings:
     path: Assets/Scenes/Menus/Main Settings.unity
     guid: 457257ddaf6e34b1eba3b4b52e4b065d
   - enabled: 1
-    path: Assets/Scenes/Testing/Movement.unity
-    guid: e1b03cc06c36d22488972f8dfb702f8d
+    path: Assets/Scenes/Multiplayer/OnlineArena.unity
+    guid: 7a6db70f4d104ad3b1cd5b0ec50a890e
   - enabled: 1
     path: Assets/Scenes/Menus/MultiplayerMenu.unity
     guid: d867de090dae7455b98e77316d81b421

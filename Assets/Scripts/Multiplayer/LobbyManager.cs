@@ -3,9 +3,11 @@ using Fusion;
 using TMPro;
 using UnityEngine.UI;
 using System.Collections.Generic;
+using UnityEngine.SceneManagement;
 
 public class LobbyManager : MonoBehaviour
 {
+    private const int QuietmorCharacterIndex = 3;
     private static readonly string[] CharacterNames =
     {
         "Heliandra", "Lunara", "Solmara", "Quietmor", "Acatheria", "Terramor"
@@ -33,10 +35,16 @@ public class LobbyManager : MonoBehaviour
     private void Start()
     {
         LocalPlayerName = PlayerPrefs.GetString("PlayerName", "Player");
-        selectedCharacterIndex = PlayerPrefs.GetInt("SelectedCharacterIndex", -1);
+        selectedCharacterIndex = PlayerPrefs.GetInt("SelectedCharacterIndex", QuietmorCharacterIndex);
+        if (!IsCharacterAvailable(selectedCharacterIndex))
+            selectedCharacterIndex = QuietmorCharacterIndex;
         BuildCharacterSelection();
         ConfigureModeAvailability();
+        ConfigureModePopupLayout();
         HidPopup();
+
+        if (SceneManager.GetActiveScene().name == "MultiplayerMenu")
+            OnClickOpenModeSelection();
     }
 
     public void OnClickOpenModeSelection()
@@ -61,7 +69,7 @@ public class LobbyManager : MonoBehaviour
             return;
         }
 
-        if (selectedCharacterIndex < 0 || selectedCharacterIndex >= CharacterNames.Length)
+        if (!IsCharacterAvailable(selectedCharacterIndex))
         {
             if (characterSelectionStatus != null)
             {
@@ -108,6 +116,12 @@ public class LobbyManager : MonoBehaviour
             characterSelectionPanel.SetActive(false);
         if (conectionFailedMessage != null)
             conectionFailedMessage.SetActive(false);
+    }
+
+    public void ReturnToMainMenu()
+    {
+        OnlineMatchState.Reset();
+        SceneManager.LoadScene("Main Menu");
     }
 
     private int GetSceneIndexForMode(string modeName)
@@ -158,25 +172,33 @@ public class LobbyManager : MonoBehaviour
 
         characterSelectionPanel = CreateUiObject("Multiplayer Character Selector", canvas.transform);
         RectTransform panelRect = characterSelectionPanel.GetComponent<RectTransform>();
-        panelRect.anchorMin = new Vector2(1f, 0.5f);
-        panelRect.anchorMax = new Vector2(1f, 0.5f);
-        panelRect.pivot = new Vector2(1f, 0.5f);
-        panelRect.anchoredPosition = new Vector2(-45f, 0f);
-        panelRect.sizeDelta = new Vector2(470f, 590f);
+        panelRect.anchorMin = panelRect.anchorMax = panelRect.pivot = new Vector2(0.5f, 0.5f);
+        panelRect.anchoredPosition = new Vector2(300f, 0f);
+        panelRect.sizeDelta = new Vector2(500f, 500f);
         Image panelImage = characterSelectionPanel.AddComponent<Image>();
         panelImage.color = new Color(0.055f, 0.035f, 0.070f, 0.97f);
 
-        CreateText(characterSelectionPanel.transform, "Elige tu personaje", new Vector2(0f, 245f), new Vector2(430f, 65f), 32f);
-        characterSelectionStatus = CreateText(characterSelectionPanel.transform, "Selecciona 1 para el duelo", new Vector2(0f, 195f), new Vector2(430f, 45f), 20f);
+        CreateText(characterSelectionPanel.transform, "Elige tu personaje", new Vector2(0f, 205f), new Vector2(450f, 56f), 32f);
+        characterSelectionStatus = CreateText(characterSelectionPanel.transform, "Seleccionado: Quietmor", new Vector2(0f, 158f), new Vector2(450f, 40f), 20f);
 
         for (int i = 0; i < CharacterNames.Length; i++)
         {
             int characterIndex = i;
             int column = i % 2;
             int row = i / 2;
-            Vector2 position = new Vector2(column == 0 ? -110f : 110f, 105f - row * 105f);
+            Vector2 position = new Vector2(column == 0 ? -115f : 115f, 75f - row * 92f);
             Button button = CreateCharacterButton(characterSelectionPanel.transform, CharacterNames[i], position);
-            button.onClick.AddListener(() => SelectCharacter(characterIndex));
+            bool available = IsCharacterAvailable(characterIndex);
+            button.interactable = available;
+            TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+            if (!available && label != null)
+            {
+                label.text = CharacterNames[i] + " · Bloqueado";
+                label.fontSize = 15f;
+                label.color = new Color(0.48f, 0.47f, 0.45f, 1f);
+            }
+            if (available)
+                button.onClick.AddListener(() => SelectCharacter(characterIndex));
             characterButtons[characterIndex] = button;
         }
 
@@ -186,6 +208,8 @@ public class LobbyManager : MonoBehaviour
 
     private void SelectCharacter(int characterIndex)
     {
+        if (!IsCharacterAvailable(characterIndex)) return;
+
         selectedCharacterIndex = characterIndex;
         PlayerPrefs.SetInt("SelectedCharacterIndex", characterIndex);
         PlayerPrefs.SetString("SelectedCharacter", CharacterNames[characterIndex]);
@@ -207,9 +231,62 @@ public class LobbyManager : MonoBehaviour
         {
             Image image = entry.Value.targetGraphic as Image;
             if (image != null)
-                image.color = entry.Key == selectedCharacterIndex
+                image.color = !IsCharacterAvailable(entry.Key)
+                    ? new Color(0.10f, 0.10f, 0.11f, 0.72f)
+                    : entry.Key == selectedCharacterIndex
                     ? new Color(0.49f, 0.36f, 0.12f, 1f)
                     : new Color(0.08f, 0.15f, 0.13f, 1f);
+        }
+    }
+
+    private static bool IsCharacterAvailable(int characterIndex)
+    {
+        return characterIndex == QuietmorCharacterIndex;
+    }
+
+    private void ConfigureModePopupLayout()
+    {
+        if (modeSelectionPopup == null) return;
+
+        RectTransform popupRect = modeSelectionPopup.GetComponent<RectTransform>();
+        if (popupRect != null)
+        {
+            popupRect.anchorMin = popupRect.anchorMax = popupRect.pivot = new Vector2(0.5f, 0.5f);
+            popupRect.anchoredPosition = new Vector2(-300f, 0f);
+            popupRect.sizeDelta = new Vector2(520f, 500f);
+            popupRect.localScale = Vector3.one;
+        }
+
+        foreach (Button button in modeSelectionPopup.GetComponentsInChildren<Button>(true))
+        {
+            TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+            if (label == null) continue;
+
+            string normalized = label.text.ToLowerInvariant();
+            bool isModeButton = normalized.Contains("1 vs 1") || normalized.Contains("1v1") ||
+                                normalized.Contains("2v2") || normalized.Contains("2 v 2") ||
+                                normalized.Contains("3v3") || normalized.Contains("3 v 3") ||
+                                normalized.Contains("duel") || normalized.Contains("dúo") ||
+                                normalized.Contains("clash");
+            if (!isModeButton) continue;
+
+            bool isDuel = normalized.Contains("1 vs 1") || normalized.Contains("1v1") || normalized.Contains("duel");
+            bool isDuo = normalized.Contains("2v2") || normalized.Contains("2 v 2") || normalized.Contains("dúo") || normalized.Contains("duo");
+
+            RectTransform buttonRect = button.GetComponent<RectTransform>();
+            buttonRect.anchorMin = buttonRect.anchorMax = buttonRect.pivot = new Vector2(0.5f, 0.5f);
+            buttonRect.anchoredPosition = new Vector2(0f, isDuel ? 90f : isDuo ? 0f : -90f);
+            buttonRect.sizeDelta = new Vector2(460f, 76f);
+            buttonRect.localScale = Vector3.one;
+
+            label.enableAutoSizing = false;
+            label.fontSize = 27f;
+            if (isDuel)
+                label.text = "Entrar al duelo 1v1";
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            label.overflowMode = TextOverflowModes.Ellipsis;
+            label.alignment = TextAlignmentOptions.Center;
+            label.margin = new Vector4(12f, 4f, 12f, 4f);
         }
     }
 
@@ -219,11 +296,11 @@ public class LobbyManager : MonoBehaviour
         RectTransform rect = gameObject.GetComponent<RectTransform>();
         rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
         rect.anchoredPosition = position;
-        rect.sizeDelta = new Vector2(200f, 74f);
+        rect.sizeDelta = new Vector2(210f, 68f);
         Image image = gameObject.AddComponent<Image>();
         Button button = gameObject.AddComponent<Button>();
         button.targetGraphic = image;
-        CreateText(gameObject.transform, label, Vector2.zero, new Vector2(190f, 64f), 19f);
+        CreateText(gameObject.transform, label, Vector2.zero, new Vector2(198f, 58f), 18f);
         return button;
     }
 

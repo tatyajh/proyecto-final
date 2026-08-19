@@ -25,7 +25,7 @@ public sealed class MobileSafeArea : MonoBehaviour
 
     private static void InstallForScene(Scene scene)
     {
-        if (scene.name != "Movement") return;
+        if (scene.name != "OnlineArena" && scene.name != "Movement") return;
         Canvas target = FindFirstObjectByType<Canvas>();
         if (target != null && target.GetComponent<MobileSafeArea>() == null)
             target.gameObject.AddComponent<MobileSafeArea>();

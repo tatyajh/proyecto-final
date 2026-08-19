@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 public class NetworkLauncher : MonoBehaviour
 {
+    private const int ConnectionTimeoutMilliseconds = 15000;
     private NetworkRunner _networkRunner;
 
     public async Task<bool> StartGame(GameMode mode, string roomName, int sceneIndex)
@@ -16,7 +17,19 @@ public class NetworkLauncher : MonoBehaviour
 
         try
         {
-            StartGameResult result = await ConnectPhotonFusionToCloud(mode, roomName, sceneIndex);
+            Task<StartGameResult> connectionTask = ConnectPhotonFusionToCloud(mode, roomName, sceneIndex);
+            Task completedTask = await Task.WhenAny(connectionTask, Task.Delay(ConnectionTimeoutMilliseconds));
+            if (completedTask != connectionTask)
+            {
+                Debug.LogWarning("[NetworkLauncher] Photon no respondió en 15 s. Se canceló el intento.");
+                if (_networkRunner != null)
+                    await _networkRunner.Shutdown();
+                DiscardRunner();
+                OnlineMatchState.Set(OnlineMatchPhase.ConnectionFailed, "La conexión tardó demasiado. Intenta nuevamente.");
+                return false;
+            }
+
+            StartGameResult result = await connectionTask;
             float elapsed = Time.realtimeSinceStartup - startedAt;
             Debug.Log($"[NetworkLauncher] Matchmaking 1v1 terminó en {elapsed:F2} s. Resultado: {result.ShutdownReason}");
 

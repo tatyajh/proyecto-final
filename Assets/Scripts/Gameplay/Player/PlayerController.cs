@@ -9,6 +9,7 @@ using Gameplay.Combat;
 public class PlayerController : NetworkBehaviour 
 {
     public const int MaxHealth = 100;
+    private const float DesiredCharacterHeight = 3.2f;
     private static readonly string[] CharacterNames =
     {
         "Heliandra", "Lunara", "Solmara", "Quietmor", "Acatheria", "Terramor"
@@ -185,8 +186,6 @@ public class PlayerController : NetworkBehaviour
         if (!controlsEnabled || IsDefeated || !CanControlPlayer() || direction == Vector3.zero)
             return false;
 
-        ShowAttackFeedback(direction, ultimate);
-
         if (Object != null && CountActivePlayers() < 2)
             return false;
 
@@ -211,26 +210,48 @@ public class PlayerController : NetworkBehaviour
 
         PlayerController closestTarget = null;
         float closestDistance = float.MaxValue;
+        float closestObstacleDistance = range;
         foreach (RaycastHit hit in hits)
         {
-            PlayerController candidate = hit.collider.GetComponentInParent<PlayerController>();
-            if (candidate == null || candidate == this || candidate.IsDefeated)
+            if (hit.collider.transform == transform || hit.collider.transform.IsChildOf(transform))
                 continue;
 
-            if (hit.distance < closestDistance)
+            PlayerController candidate = hit.collider.GetComponentInParent<PlayerController>();
+            if (candidate == this)
+                continue;
+
+            if (candidate == null)
+            {
+                closestObstacleDistance = Mathf.Min(closestObstacleDistance, hit.distance);
+                continue;
+            }
+
+            if (!candidate.IsDefeated && hit.distance < closestDistance)
             {
                 closestDistance = hit.distance;
                 closestTarget = candidate;
             }
         }
 
-        if (closestTarget != null)
+        float feedbackRange = Mathf.Clamp(closestObstacleDistance, 0.25f, range);
+        if (Object != null)
+            RPC_ShowAttackFeedback(direction.normalized, ultimate, feedbackRange);
+        else
+            ShowAttackFeedback(direction.normalized, ultimate, feedbackRange);
+
+        if (closestTarget != null && closestDistance <= closestObstacleDistance + 0.01f)
             closestTarget.ReceiveDamage(damage);
 
         return true;
     }
 
-    private void ShowAttackFeedback(Vector3 direction, bool ultimate)
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_ShowAttackFeedback(Vector3 direction, bool ultimate, float feedbackRange)
+    {
+        ShowAttackFeedback(direction, ultimate, feedbackRange);
+    }
+
+    private void ShowAttackFeedback(Vector3 direction, bool ultimate, float feedbackRange)
     {
         GameObject feedback = new GameObject(ultimate ? "UltimateFeedback" : "AttackFeedback");
         LineRenderer line = feedback.AddComponent<LineRenderer>();
@@ -249,9 +270,8 @@ public class PlayerController : NetworkBehaviour
         line.useWorldSpace = true;
 
         Vector3 origin = transform.position + Vector3.up * 0.8f;
-        float range = ultimate ? 8f : 5f;
         line.SetPosition(0, origin);
-        line.SetPosition(1, origin + direction.normalized * range);
+        line.SetPosition(1, origin + direction.normalized * feedbackRange);
 
         Destroy(feedback, 0.2f);
         if (feedbackMaterial != null) Destroy(feedbackMaterial, 0.25f);
@@ -316,9 +336,16 @@ public class PlayerController : NetworkBehaviour
         Color primary = CharacterColors[characterIndex];
         Color secondary = Color.Lerp(primary, new Color(0.82f, 0.78f, 0.66f), 0.45f);
 
+        // Por ahora solo existe un modelo de personaje real en el repositorio.
+        // Se utiliza para Quietmor y se conserva la silueta provisional para
+        // las demás selecciones hasta que arte entregue sus respectivos FBX.
+        if (characterIndex == 3 && TryCreateImportedCharacterVisual())
+            return;
+
         prototypeVisual = new GameObject($"Prototype {CharacterNames[characterIndex]}").transform;
         prototypeVisual.SetParent(transform, false);
         prototypeVisual.localPosition = Vector3.zero;
+        prototypeVisual.localScale = Vector3.one * (DesiredCharacterHeight / 2f);
 
         CreateVisualPart("Torso", PrimitiveType.Cube, new Vector3(0f, 0.15f, 0f), new Vector3(0.68f, 0.82f, 0.42f), primary);
         CreateVisualPart("Head", PrimitiveType.Sphere, new Vector3(0f, 0.88f, 0f), Vector3.one * 0.42f, secondary);
@@ -333,6 +360,45 @@ public class PlayerController : NetworkBehaviour
             CreateVisualPart("Hood", PrimitiveType.Sphere, new Vector3(0f, 0.98f, 0.05f), new Vector3(0.54f, 0.42f, 0.50f), primary * 0.7f);
         else if (characterIndex == 2 || characterIndex == 5)
             CreateVisualPart("Crown", PrimitiveType.Cylinder, new Vector3(0f, 1.18f, 0f), new Vector3(0.28f, 0.10f, 0.28f), secondary);
+    }
+
+    private bool TryCreateImportedCharacterVisual()
+    {
+        GameObject characterPrefab = Resources.Load<GameObject>("Characters/CampanaPrototype");
+        if (characterPrefab == null) return false;
+
+        GameObject instance = Instantiate(characterPrefab, transform);
+        instance.name = "Prototype Quietmor";
+        instance.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+
+        foreach (Collider visualCollider in instance.GetComponentsInChildren<Collider>(true))
+            Destroy(visualCollider);
+
+        prototypeVisual = instance.transform;
+        FitImportedCharacterToCollider(instance);
+        return true;
+    }
+
+    private void FitImportedCharacterToCollider(GameObject character)
+    {
+        Renderer[] renderers = character.GetComponentsInChildren<Renderer>(true);
+        if (renderers.Length == 0) return;
+
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+
+        if (bounds.size.y <= 0.001f) return;
+
+        float scale = DesiredCharacterHeight / bounds.size.y;
+        character.transform.localScale *= scale;
+
+        bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+
+        float colliderBottom = transform.position.y - 1f;
+        character.transform.position += Vector3.up * (colliderBottom - bounds.min.y);
     }
 
     private void CreateVisualPart(string partName, PrimitiveType primitiveType, Vector3 position, Vector3 scale, Color color)
@@ -358,9 +424,9 @@ public class PlayerController : NetworkBehaviour
     private int GetSelectedCharacterIndex()
     {
         if (Object == null || Object.HasInputAuthority)
-            return Mathf.Clamp(PlayerPrefs.GetInt("SelectedCharacterIndex", 0), 0, CharacterNames.Length - 1);
+            return Mathf.Clamp(PlayerPrefs.GetInt("SelectedCharacterIndex", 3), 0, CharacterNames.Length - 1);
 
-        return Mathf.Abs(Object.InputAuthority.PlayerId) % CharacterNames.Length;
+        return 3;
     }
 
     private string GetDisplayName()
@@ -448,7 +514,9 @@ public class PlayerController : NetworkBehaviour
                 OnlineMatchState.Set(OnlineMatchPhase.Finished, result);
             GUI.Box(new Rect(width * 0.5f - 180f, 125f, 360f, 90f), string.Empty);
             GUI.Label(new Rect(width * 0.5f - 180f, 135f, 360f, 60f), result, hudLabel);
-            if (GUI.Button(new Rect(width * 0.5f - 90f, 220f, 180f, 48f), "Volver al menú"))
+            if (GUI.Button(new Rect(width * 0.5f - 195f, 220f, 185f, 48f), "Jugar otra vez"))
+                ReturnToMultiplayerLobby();
+            if (GUI.Button(new Rect(width * 0.5f + 10f, 220f, 185f, 48f), "Salir al menú"))
                 ReturnToMainMenu();
         }
     }
@@ -467,6 +535,17 @@ public class PlayerController : NetworkBehaviour
 
         PlayModeContext.UseLocalStory();
         SceneManager.LoadScene("Main Menu");
+    }
+
+    private async void ReturnToMultiplayerLobby()
+    {
+        controlsEnabled = false;
+
+        if (Object != null && Runner != null && Runner.IsRunning)
+            await Runner.Shutdown();
+
+        OnlineMatchState.Reset();
+        SceneManager.LoadScene("MultiplayerMenu");
     }
 
     private Vector2 GetInputVector()
