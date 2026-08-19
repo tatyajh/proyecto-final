@@ -34,6 +34,7 @@ public static class MenuVisualPolish
         if (!scene.path.Contains("/Menus/"))
             return;
 
+        ConfigureResponsiveCanvas(scene);
         InstallMenuBackdrop(scene);
 
         foreach (GameObject root in scene.GetRootGameObjects())
@@ -51,6 +52,20 @@ public static class MenuVisualPolish
             StyleMainMenu(scene);
         else if (scene.name == "Story Mode Menu")
             StyleStoryMenu(scene);
+    }
+
+    private static void ConfigureResponsiveCanvas(Scene scene)
+    {
+        foreach (GameObject root in scene.GetRootGameObjects())
+        {
+            foreach (CanvasScaler scaler in root.GetComponentsInChildren<CanvasScaler>(true))
+            {
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                scaler.referenceResolution = new Vector2(1280f, 720f);
+                scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+                scaler.matchWidthOrHeight = 0.5f;
+            }
+        }
     }
 
     private static void StyleButton(Button button)
