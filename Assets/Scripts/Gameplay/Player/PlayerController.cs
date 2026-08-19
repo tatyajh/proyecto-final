@@ -9,6 +9,7 @@ using Gameplay.Combat;
 public class PlayerController : NetworkBehaviour 
 {
     public const int MaxHealth = 100;
+    private const float DesiredCharacterHeight = 3.2f;
     private static readonly string[] CharacterNames =
     {
         "Heliandra", "Lunara", "Solmara", "Quietmor", "Acatheria", "Terramor"
@@ -196,11 +197,6 @@ public class PlayerController : NetworkBehaviour
         if (ultimate) ultimateReadyAt = now + 8f;
         else basicReadyAt = now + 1f;
 
-        if (Object != null)
-            RPC_ShowAttackFeedback(direction.normalized, ultimate);
-        else
-            ShowAttackFeedback(direction.normalized, ultimate);
-
         float range = ultimate ? 8f : 5f;
         float radius = ultimate ? 1.25f : 0.65f;
         int damage = ultimate ? 40 : 20;
@@ -214,32 +210,48 @@ public class PlayerController : NetworkBehaviour
 
         PlayerController closestTarget = null;
         float closestDistance = float.MaxValue;
+        float closestObstacleDistance = range;
         foreach (RaycastHit hit in hits)
         {
-            PlayerController candidate = hit.collider.GetComponentInParent<PlayerController>();
-            if (candidate == null || candidate == this || candidate.IsDefeated)
+            if (hit.collider.transform == transform || hit.collider.transform.IsChildOf(transform))
                 continue;
 
-            if (hit.distance < closestDistance)
+            PlayerController candidate = hit.collider.GetComponentInParent<PlayerController>();
+            if (candidate == this)
+                continue;
+
+            if (candidate == null)
+            {
+                closestObstacleDistance = Mathf.Min(closestObstacleDistance, hit.distance);
+                continue;
+            }
+
+            if (!candidate.IsDefeated && hit.distance < closestDistance)
             {
                 closestDistance = hit.distance;
                 closestTarget = candidate;
             }
         }
 
-        if (closestTarget != null)
+        float feedbackRange = Mathf.Clamp(closestObstacleDistance, 0.25f, range);
+        if (Object != null)
+            RPC_ShowAttackFeedback(direction.normalized, ultimate, feedbackRange);
+        else
+            ShowAttackFeedback(direction.normalized, ultimate, feedbackRange);
+
+        if (closestTarget != null && closestDistance <= closestObstacleDistance + 0.01f)
             closestTarget.ReceiveDamage(damage);
 
         return true;
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
-    private void RPC_ShowAttackFeedback(Vector3 direction, bool ultimate)
+    private void RPC_ShowAttackFeedback(Vector3 direction, bool ultimate, float feedbackRange)
     {
-        ShowAttackFeedback(direction, ultimate);
+        ShowAttackFeedback(direction, ultimate, feedbackRange);
     }
 
-    private void ShowAttackFeedback(Vector3 direction, bool ultimate)
+    private void ShowAttackFeedback(Vector3 direction, bool ultimate, float feedbackRange)
     {
         GameObject feedback = new GameObject(ultimate ? "UltimateFeedback" : "AttackFeedback");
         LineRenderer line = feedback.AddComponent<LineRenderer>();
@@ -258,9 +270,8 @@ public class PlayerController : NetworkBehaviour
         line.useWorldSpace = true;
 
         Vector3 origin = transform.position + Vector3.up * 0.8f;
-        float range = ultimate ? 8f : 5f;
         line.SetPosition(0, origin);
-        line.SetPosition(1, origin + direction.normalized * range);
+        line.SetPosition(1, origin + direction.normalized * feedbackRange);
 
         Destroy(feedback, 0.2f);
         if (feedbackMaterial != null) Destroy(feedbackMaterial, 0.25f);
@@ -334,6 +345,7 @@ public class PlayerController : NetworkBehaviour
         prototypeVisual = new GameObject($"Prototype {CharacterNames[characterIndex]}").transform;
         prototypeVisual.SetParent(transform, false);
         prototypeVisual.localPosition = Vector3.zero;
+        prototypeVisual.localScale = Vector3.one * (DesiredCharacterHeight / 2f);
 
         CreateVisualPart("Torso", PrimitiveType.Cube, new Vector3(0f, 0.15f, 0f), new Vector3(0.68f, 0.82f, 0.42f), primary);
         CreateVisualPart("Head", PrimitiveType.Sphere, new Vector3(0f, 0.88f, 0f), Vector3.one * 0.42f, secondary);
@@ -378,8 +390,7 @@ public class PlayerController : NetworkBehaviour
 
         if (bounds.size.y <= 0.001f) return;
 
-        const float desiredHeight = 2f;
-        float scale = desiredHeight / bounds.size.y;
+        float scale = DesiredCharacterHeight / bounds.size.y;
         character.transform.localScale *= scale;
 
         bounds = renderers[0].bounds;

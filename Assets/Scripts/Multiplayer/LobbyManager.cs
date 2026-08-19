@@ -173,20 +173,20 @@ public class LobbyManager : MonoBehaviour
         characterSelectionPanel = CreateUiObject("Multiplayer Character Selector", canvas.transform);
         RectTransform panelRect = characterSelectionPanel.GetComponent<RectTransform>();
         panelRect.anchorMin = panelRect.anchorMax = panelRect.pivot = new Vector2(0.5f, 0.5f);
-        panelRect.anchoredPosition = new Vector2(285f, 0f);
-        panelRect.sizeDelta = new Vector2(360f, 470f);
+        panelRect.anchoredPosition = new Vector2(300f, 0f);
+        panelRect.sizeDelta = new Vector2(500f, 500f);
         Image panelImage = characterSelectionPanel.AddComponent<Image>();
         panelImage.color = new Color(0.055f, 0.035f, 0.070f, 0.97f);
 
-        CreateText(characterSelectionPanel.transform, "Elige tu personaje", new Vector2(0f, 192f), new Vector2(330f, 52f), 27f);
-        characterSelectionStatus = CreateText(characterSelectionPanel.transform, "Selecciona 1 para el duelo", new Vector2(0f, 150f), new Vector2(330f, 38f), 16f);
+        CreateText(characterSelectionPanel.transform, "Elige tu personaje", new Vector2(0f, 205f), new Vector2(450f, 56f), 32f);
+        characterSelectionStatus = CreateText(characterSelectionPanel.transform, "Seleccionado: Quietmor", new Vector2(0f, 158f), new Vector2(450f, 40f), 20f);
 
         for (int i = 0; i < CharacterNames.Length; i++)
         {
             int characterIndex = i;
             int column = i % 2;
             int row = i / 2;
-            Vector2 position = new Vector2(column == 0 ? -85f : 85f, 82f - row * 82f);
+            Vector2 position = new Vector2(column == 0 ? -115f : 115f, 75f - row * 92f);
             Button button = CreateCharacterButton(characterSelectionPanel.transform, CharacterNames[i], position);
             bool available = IsCharacterAvailable(characterIndex);
             button.interactable = available;
@@ -252,8 +252,8 @@ public class LobbyManager : MonoBehaviour
         if (popupRect != null)
         {
             popupRect.anchorMin = popupRect.anchorMax = popupRect.pivot = new Vector2(0.5f, 0.5f);
-            popupRect.anchoredPosition = new Vector2(-215f, 0f);
-            popupRect.sizeDelta = new Vector2(500f, 430f);
+            popupRect.anchoredPosition = new Vector2(-300f, 0f);
+            popupRect.sizeDelta = new Vector2(520f, 500f);
             popupRect.localScale = Vector3.one;
         }
 
@@ -270,12 +270,19 @@ public class LobbyManager : MonoBehaviour
                                 normalized.Contains("clash");
             if (!isModeButton) continue;
 
+            bool isDuel = normalized.Contains("1 vs 1") || normalized.Contains("1v1") || normalized.Contains("duel");
+            bool isDuo = normalized.Contains("2v2") || normalized.Contains("2 v 2") || normalized.Contains("dúo") || normalized.Contains("duo");
+
             RectTransform buttonRect = button.GetComponent<RectTransform>();
-            buttonRect.sizeDelta = new Vector2(440f, 68f);
+            buttonRect.anchorMin = buttonRect.anchorMax = buttonRect.pivot = new Vector2(0.5f, 0.5f);
+            buttonRect.anchoredPosition = new Vector2(0f, isDuel ? 90f : isDuo ? 0f : -90f);
+            buttonRect.sizeDelta = new Vector2(460f, 76f);
             buttonRect.localScale = Vector3.one;
 
             label.enableAutoSizing = false;
-            label.fontSize = 25f;
+            label.fontSize = 27f;
+            if (isDuel)
+                label.text = "Entrar al duelo 1v1";
             label.textWrappingMode = TextWrappingModes.NoWrap;
             label.overflowMode = TextOverflowModes.Ellipsis;
             label.alignment = TextAlignmentOptions.Center;
@@ -289,11 +296,11 @@ public class LobbyManager : MonoBehaviour
         RectTransform rect = gameObject.GetComponent<RectTransform>();
         rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
         rect.anchoredPosition = position;
-        rect.sizeDelta = new Vector2(155f, 58f);
+        rect.sizeDelta = new Vector2(210f, 68f);
         Image image = gameObject.AddComponent<Image>();
         Button button = gameObject.AddComponent<Button>();
         button.targetGraphic = image;
-        CreateText(gameObject.transform, label, Vector2.zero, new Vector2(145f, 50f), 16f);
+        CreateText(gameObject.transform, label, Vector2.zero, new Vector2(198f, 58f), 18f);
         return button;
     }
 

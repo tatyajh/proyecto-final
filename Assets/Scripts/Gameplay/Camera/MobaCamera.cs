@@ -20,6 +20,12 @@ public class MobaCamera : MonoBehaviour
     [SerializeField] private bool smoothFollow = true;
     [SerializeField] private float followSpeed = 12f;
 
+    [Header("Colisión de Cámara")]
+    [SerializeField] private bool avoidObstacles = true;
+    [SerializeField, Min(0.1f)] private float collisionRadius = 0.55f;
+    [SerializeField, Min(0.05f)] private float collisionPadding = 0.35f;
+    [SerializeField, Min(1f)] private float minimumDistance = 3f;
+
     private void LateUpdate()
     {
         if (target == null) return;
@@ -30,6 +36,9 @@ public class MobaCamera : MonoBehaviour
         // 2. Determinar la posición calculando el vector hacia atrás según la distancia
         Vector3 focusPoint = target.position + targetOffset;
         Vector3 desiredPosition = focusPoint - (cameraRotation * Vector3.forward * distance);
+
+        if (Application.isPlaying && avoidObstacles)
+            desiredPosition = ResolveObstacleCollision(focusPoint, desiredPosition);
 
         // 3. Aplicar posición (Suave para no causar tirones o Rígido si desactivas el bool)
         if (Application.isPlaying && smoothFollow)
@@ -43,6 +52,40 @@ public class MobaCamera : MonoBehaviour
 
         // 4. Fijar la rotación exacta
         transform.rotation = cameraRotation;
+    }
+
+    private Vector3 ResolveObstacleCollision(Vector3 focusPoint, Vector3 desiredPosition)
+    {
+        Vector3 cameraVector = desiredPosition - focusPoint;
+        float desiredDistance = cameraVector.magnitude;
+        if (desiredDistance <= 0.001f) return desiredPosition;
+
+        Vector3 direction = cameraVector / desiredDistance;
+        RaycastHit[] hits = Physics.SphereCastAll(
+            focusPoint,
+            collisionRadius,
+            direction,
+            desiredDistance,
+            Physics.AllLayers,
+            QueryTriggerInteraction.Ignore);
+
+        float nearestObstacle = desiredDistance;
+        foreach (RaycastHit hit in hits)
+        {
+            Transform hitTransform = hit.collider.transform;
+            if (hitTransform == target || hitTransform.IsChildOf(target))
+                continue;
+            if (hit.collider.GetComponentInParent<PlayerController>() != null)
+                continue;
+
+            nearestObstacle = Mathf.Min(nearestObstacle, hit.distance);
+        }
+
+        float obstacleSafeDistance = nearestObstacle - collisionPadding;
+        float safeDistance = nearestObstacle < minimumDistance + collisionPadding
+            ? Mathf.Clamp(obstacleSafeDistance, 0.2f, desiredDistance)
+            : Mathf.Clamp(obstacleSafeDistance, minimumDistance, desiredDistance);
+        return focusPoint + direction * safeDistance;
     }
 
     public void SetTarget(Transform newTarget)
