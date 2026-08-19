@@ -6,7 +6,7 @@ using System.Collections.Generic;
 
 public class LevelSelectionController : MonoBehaviour
 {
-    private const string PlayableArenaScene = "Movement";
+    private const string PlayableArenaScene = "OnlineArena";
 
     [Header("Progress Config")]
     int maxUnlockedLevel = 1;
