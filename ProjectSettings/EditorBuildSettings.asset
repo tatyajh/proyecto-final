@@ -17,7 +17,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Multiplayer/OnlineArena.unity
     guid: 7a6db70f4d104ad3b1cd5b0ec50a890e
-  - enabled: 0
+  - enabled: 1
     path: Assets/Scenes/Menus/MultiplayerMenu.unity
     guid: d867de090dae7455b98e77316d81b421
   - enabled: 1

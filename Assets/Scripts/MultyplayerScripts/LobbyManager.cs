@@ -3,6 +3,7 @@ using Fusion;
 using TMPro;
 using UnityEngine.UI;
 using System.Collections.Generic;
+using UnityEngine.SceneManagement;
 
 public class LobbyManager : MonoBehaviour
 {
@@ -41,6 +42,9 @@ public class LobbyManager : MonoBehaviour
         ConfigureModeAvailability();
         ConfigureModePopupLayout();
         HidPopup();
+
+        if (SceneManager.GetActiveScene().name == "MultiplayerMenu")
+            OnClickOpenModeSelection();
     }
 
     public void OnClickOpenModeSelection()
@@ -112,6 +116,12 @@ public class LobbyManager : MonoBehaviour
             characterSelectionPanel.SetActive(false);
         if (conectionFailedMessage != null)
             conectionFailedMessage.SetActive(false);
+    }
+
+    public void ReturnToMainMenu()
+    {
+        OnlineMatchState.Reset();
+        SceneManager.LoadScene("Main Menu");
     }
 
     private int GetSceneIndexForMode(string modeName)

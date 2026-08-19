@@ -40,14 +40,7 @@ public class MainMenuController : MonoBehaviour
 
     public void GoToMultiplayer()
     {
-        LobbyManager lobby = FindFirstObjectByType<LobbyManager>();
-        if (lobby != null)
-        {
-            lobby.OnClickOpenModeSelection();
-            return;
-        }
-
-        Debug.LogError("No se encontró el LobbyManager del menú multijugador.");
+        SceneManager.LoadScene(multiplayerScene);
     }
     
     public void GoToSettings()
