@@ -26,7 +26,7 @@ RenderSettings:
   m_AmbientIntensity: 1
   m_AmbientMode: 0
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
-  m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
+  m_SkyboxMaterial: {fileID: 2100000, guid: 779a8f4d001fcf44b93d3c0ff18e24f0, type: 2}
   m_HaloStrength: 0.5
   m_FlareStrength: 1
   m_FlareFadeSpeed: 3
@@ -905,7 +905,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 2147483647
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!64 &617496279
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -1028,9 +1028,9 @@ MonoBehaviour:
   m_OverrideTileSize: 0
   m_TileSize: 256
   m_OverrideVoxelSize: 0
-  m_VoxelSize: 0.16666667
+  m_VoxelSize: 0.30666667
   m_MinRegionArea: 2
-  m_NavMeshData: {fileID: 23800000, guid: 72f59a32ebdd86d45a1ca663ca43434f, type: 2}
+  m_NavMeshData: {fileID: 23800000, guid: 054b9136487605145ad5f5f513693738, type: 2}
   m_BuildHeightMesh: 0
 --- !u!1 &639870740
 GameObject:
@@ -1473,6 +1473,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Santuario
       objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 69c943a0bf406db4d89b56f869a447ba, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -1807,8 +1811,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1486059107}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.25332564, y: -0.41320682, z: 0.12083013, w: 0.8663061}
-  m_LocalPosition: {x: 79.658295, y: 25.606316, z: -44.01681}
+  m_LocalRotation: {x: 0.2533256, y: -0.41320682, z: 0.12083012, w: 0.8663061}
+  m_LocalPosition: {x: 79.658295, y: 25.606312, z: -44.016815}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
