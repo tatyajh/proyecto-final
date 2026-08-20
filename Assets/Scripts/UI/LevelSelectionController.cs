@@ -60,27 +60,27 @@ public class LevelSelectionController : MonoBehaviour
 
     public void OnClickLevel1()
     {
-        SelectLevel("Nivel 1: El Santuario", "Explora la arena, practica el movimiento y prueba tus habilidades.", PlayableArenaScene);
+        SelectLevel(GameLocalization.Choose("Nivel 1: El Santuario", "Level 1: The Sanctuary"), GameLocalization.Choose("Explora la arena, practica el movimiento y prueba tus habilidades.", "Explore the arena, practise movement and test your abilities."), PlayableArenaScene);
     }
 
     public void OnClickLevel2()
     {
-        SelectLevel("Nivel 2: Entrenamiento", "Prototipo jugable en la arena compartida.", PlayableArenaScene);
+        SelectLevel(GameLocalization.Choose("Nivel 2: Entrenamiento", "Level 2: Training"), GameLocalization.Choose("Prototipo jugable en la arena compartida.", "Playable prototype in the shared arena."), PlayableArenaScene);
     }
 
     public void OnClickLevel3()
     {
-        SelectLevel("Nivel 3: Combate", "Prototipo jugable en la arena compartida.", PlayableArenaScene);
+        SelectLevel(GameLocalization.Choose("Nivel 3: Combate", "Level 3: Combat"), GameLocalization.Choose("Prototipo jugable en la arena compartida.", "Playable prototype in the shared arena."), PlayableArenaScene);
     }
 
     public void OnClickLevel4()
     {
-        SelectLevel("Acto 4: Terramor", "Confronta a Terramor y descubre el camino hacia la Raíz Madre.", PlayableArenaScene);
+        SelectLevel(GameLocalization.Choose("Acto 4: Terramor", "Act 4: Terramor"), GameLocalization.Choose("Confronta a Terramor y descubre el camino hacia la Raíz Madre.", "Confront Terramor and discover the path to the Mother Root."), PlayableArenaScene);
     }
 
     public void OnClickFinalLevel()
     {
-        SelectLevel("Acto 5: La Podredumbre", "Enfrenta el origen de la corrupción en la Raíz Madre y decide el destino de los Árboles Primordiales.", PlayableArenaScene);
+        SelectLevel(GameLocalization.Choose("Acto 5: La Podredumbre", "Act 5: The Rot"), GameLocalization.Choose("Enfrenta el origen de la corrupción en la Raíz Madre y decide el destino de los Árboles Primordiales.", "Face the source of corruption in the Mother Root and decide the fate of the Primordial Trees."), PlayableArenaScene);
     }
 
 
@@ -99,7 +99,7 @@ public class LevelSelectionController : MonoBehaviour
         if (selectedCharacters.Count != 2)
         {
             if (txtLevelDescription != null)
-                txtLevelDescription.text = "Selecciona exactamente dos personajes antes de comenzar.";
+                txtLevelDescription.text = GameLocalization.Choose("Selecciona exactamente dos personajes antes de comenzar.", "Select exactly two characters before starting.");
             return;
         }
 
@@ -140,11 +140,12 @@ public class LevelSelectionController : MonoBehaviour
 
     private void UpdateLevelLabels()
     {
-        SetLevelLabel(levelSelectionButton1, "Acto 1 · El Santuario", maxUnlockedLevel >= 1);
-        SetLevelLabel(levelSelectionButton2, "Acto 2 · Bloqueado", maxUnlockedLevel >= 2);
-        SetLevelLabel(levelSelectionButton3, "Acto 3 · Bloqueado", maxUnlockedLevel >= 3);
-        SetLevelLabel(levelSelectionButton4, "Acto 4 · Terramor · Bloqueado", maxUnlockedLevel >= 4);
-        SetLevelLabel(finalLevelButton, "Acto 5 · La Podredumbre · Bloqueado", maxUnlockedLevel >= 5);
+        string locked = GameLocalization.Choose("Bloqueado", "Locked");
+        SetLevelLabel(levelSelectionButton1, GameLocalization.Choose("Acto 1 · El Santuario", "Act 1 · The Sanctuary"), maxUnlockedLevel >= 1, locked);
+        SetLevelLabel(levelSelectionButton2, GameLocalization.Choose("Acto 2", "Act 2") + " · " + locked, maxUnlockedLevel >= 2, locked);
+        SetLevelLabel(levelSelectionButton3, GameLocalization.Choose("Acto 3", "Act 3") + " · " + locked, maxUnlockedLevel >= 3, locked);
+        SetLevelLabel(levelSelectionButton4, GameLocalization.Choose("Acto 4 · Terramor", "Act 4 · Terramor") + " · " + locked, maxUnlockedLevel >= 4, locked);
+        SetLevelLabel(finalLevelButton, GameLocalization.Choose("Acto 5 · La Podredumbre", "Act 5 · The Rot") + " · " + locked, maxUnlockedLevel >= 5, locked);
     }
 
     private void CreateFinalLevelButton()
@@ -156,13 +157,13 @@ public class LevelSelectionController : MonoBehaviour
         finalLevelButton.onClick.AddListener(OnClickFinalLevel);
     }
 
-    private static void SetLevelLabel(Button button, string label, bool unlocked)
+    private static void SetLevelLabel(Button button, string label, bool unlocked, string locked)
     {
         if (button == null) return;
         TMP_Text text = button.GetComponentInChildren<TMP_Text>(true);
         if (text != null)
         {
-            text.text = unlocked ? label.Replace(" · Bloqueado", string.Empty) : label;
+            text.text = unlocked ? label.Replace(" · " + locked, string.Empty) : label;
             text.fontSize = 24f;
         }
     }
@@ -183,8 +184,8 @@ public class LevelSelectionController : MonoBehaviour
         Image panelImage = panel.AddComponent<Image>();
         panelImage.color = new Color(0.095f, 0.07f, 0.115f, 0.97f);
 
-        CreateText(panel.transform, "Elige tu pareja", new Vector2(0f, 265f), new Vector2(500f, 70f), 34f);
-        partySelectionStatus = CreateText(panel.transform, "Seleccionados: 0 / 2", new Vector2(0f, 210f), new Vector2(500f, 45f), 22f);
+        CreateText(panel.transform, GameLocalization.Choose("Elige tu pareja", "Choose your pair"), new Vector2(0f, 265f), new Vector2(500f, 70f), 34f);
+        partySelectionStatus = CreateText(panel.transform, GameLocalization.Choose("Seleccionados: 0 / 2", "Selected: 0 / 2"), new Vector2(0f, 210f), new Vector2(500f, 45f), 22f);
 
         for (int i = 0; i < CharacterNames.Length; i++)
         {
@@ -222,7 +223,7 @@ public class LevelSelectionController : MonoBehaviour
     private void RefreshPartySelector()
     {
         if (partySelectionStatus != null)
-            partySelectionStatus.text = $"Seleccionados: {selectedCharacters.Count} / 2";
+            partySelectionStatus.text = GameLocalization.Choose($"Seleccionados: {selectedCharacters.Count} / 2", $"Selected: {selectedCharacters.Count} / 2");
 
         foreach (KeyValuePair<string, Button> entry in characterButtons)
         {

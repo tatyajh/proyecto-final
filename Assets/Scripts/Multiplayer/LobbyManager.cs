@@ -1,121 +1,131 @@
-using UnityEngine;
+using System.Threading.Tasks;
 using Fusion;
-using TMPro;
-using UnityEngine.UI;
-using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.Serialization;
 
+/// <summary>
+/// Owns matchmaking only. MultiplayerMenuController owns presentation and input.
+/// Legacy public methods remain so serialized scene events do not break.
+/// </summary>
 public class LobbyManager : MonoBehaviour
 {
     private const int QuietmorCharacterIndex = 3;
-    private static readonly string[] CharacterNames =
-    {
-        "Heliandra", "Lunara", "Solmara", "Quietmor", "Acatheria", "Terramor"
-    };
 
-    [Header("UI References")]
+    [Header("Legacy UI (hidden by the new menu)")]
     [SerializeField] private GameObject modeSelectionPopup;
-    [SerializeField] private CanvasGroup popupCanvasGroup;
     [SerializeField] private GameObject conectionFailedMessage;
 
-    [Header("Network Reference")]
-    [SerializeField] private NetworkLauncher _networkLauncher;
+    [Header("Network")]
+    [FormerlySerializedAs("_networkLauncher")]
+    [SerializeField] private NetworkLauncher networkLauncher;
 
-    [Header("Scenes Configuration")]
+    [Header("Scenes")]
     [SerializeField] private int sceneIndex1v1 = 3;
     [SerializeField] private int sceneIndex2v2 = 3;
     [SerializeField] private int sceneIndex3v3 = 3;
 
     public static string LocalPlayerName { get; private set; }
-    private readonly Dictionary<int, Button> characterButtons = new Dictionary<int, Button>();
-    private GameObject characterSelectionPanel;
-    private TMP_Text characterSelectionStatus;
-    private int selectedCharacterIndex = -1;
+    public bool IsConnecting { get; private set; }
+
+    private MultiplayerMenuController menuController;
 
     private void Start()
     {
-        LocalPlayerName = PlayerPrefs.GetString("PlayerName", "Player");
-        selectedCharacterIndex = PlayerPrefs.GetInt("SelectedCharacterIndex", QuietmorCharacterIndex);
-        if (!IsCharacterAvailable(selectedCharacterIndex))
-            selectedCharacterIndex = QuietmorCharacterIndex;
-        BuildCharacterSelection();
-        ConfigureModeAvailability();
-        ConfigureModePopupLayout();
-        HidPopup();
+        LocalPlayerName = PlayerPrefs.GetString("PlayerName", "Jugador");
+        HideLegacyUi();
 
-        if (SceneManager.GetActiveScene().name == "MultiplayerMenu")
-            OnClickOpenModeSelection();
+        ResolveNetworkLauncher();
+
+        menuController = FindFirstObjectByType<MultiplayerMenuController>();
+        if (menuController == null)
+            menuController = gameObject.AddComponent<MultiplayerMenuController>();
+        menuController.Initialize(this);
     }
 
-    public void OnClickOpenModeSelection()
-    {
-        if (modeSelectionPopup != null)
-            modeSelectionPopup.SetActive(true);
-        if (characterSelectionPanel != null)
-            characterSelectionPanel.SetActive(true);
+    public Task<bool> ConnectOneVersusOne() => ConnectToMode(MatchModeCatalog.Duel);
 
-        if (conectionFailedMessage != null)
-            conectionFailedMessage.SetActive(false);
-    }
-
-    // Asignar a los botones del Pop-Up (1v1, 2v2, 3v3)
-    public async void OnClickSelectModeAndConnect(string modeName)
+    /// <summary>
+    /// Único punto de entrada del matchmaking. El formato (1v1, 2v2, 3v3) decide
+    /// el aforo de la sala y el número de jugadores que la arena debe esperar.
+    /// </summary>
+    public async Task<bool> ConnectToMode(MatchModeDefinition matchMode)
     {
-        if (modeName != "1v1")
+        if (IsConnecting)
+            return false;
+
+        ResolveNetworkLauncher();
+        if (networkLauncher == null)
         {
-            Debug.Log($"El modo {modeName} estará disponible después del prototipo 1v1.");
-            if (conectionFailedMessage != null)
-                conectionFailedMessage.SetActive(true);
-            return;
+            string reason = GameLocalization.Choose("No se encontró el componente de conexión Photon.", "The Photon connection component was not found.");
+            NetworkLauncher.ReportConfigurationFailure(reason);
+            OnlineMatchState.Set(OnlineMatchPhase.ConnectionFailed, reason);
+            Debug.LogError($"[LobbyManager] {reason}");
+            return false;
         }
 
-        if (!IsCharacterAvailable(selectedCharacterIndex))
-        {
-            if (characterSelectionStatus != null)
-            {
-                characterSelectionStatus.text = "Selecciona un personaje para entrar al duelo.";
-                characterSelectionStatus.color = new Color(0.86f, 0.67f, 0.24f, 1f);
-            }
-            return;
-        }
+        if (matchMode == null)
+            matchMode = MatchModeCatalog.Default;
 
-        PlayerPrefs.SetInt("SelectedCharacterIndex", selectedCharacterIndex);
-        PlayerPrefs.SetString("SelectedCharacter", CharacterNames[selectedCharacterIndex]);
-        PlayerPrefs.Save();
-        if (characterSelectionPanel != null)
-            characterSelectionPanel.SetActive(false);
+        // El personaje ya lo guardó MultiplayerMenuController al confirmarlo.
+        // La arena lee esto para saber cuántos jugadores esperar y cómo formar equipos.
+        MatchContext.Select(matchMode);
 
-        SetUIInteractivity(false);
+        IsConnecting = true;
         PlayModeContext.UseMultiplayer();
-        OnlineMatchState.Set(OnlineMatchPhase.Connecting, "Buscando partida 1v1...");
+        OnlineMatchState.Set(
+            OnlineMatchPhase.Connecting,
+            GameLocalization.Choose($"Buscando partida {matchMode.Key} ({matchMode.PlayerCount} jugadores)...", $"Searching for a {matchMode.Key} match ({matchMode.PlayerCount} players)..."));
 
-        int targetSceneIndex = GetSceneIndexForMode(modeName);
-        string targetRoom = $"Room_{modeName}";
-        Debug.Log($"Connecting to '{modeName}'...");
+        bool success = await networkLauncher.StartGame(
+            GameMode.Shared,
+            matchMode,
+            GetSceneIndexForMode(matchMode));
 
-        bool success = await _networkLauncher.StartGame(GameMode.Shared, targetRoom, targetSceneIndex);
-        
         if (!success)
         {
-            OnlineMatchState.Set(OnlineMatchPhase.ConnectionFailed, "No fue posible conectar con la partida.");
+            OnlineMatchState.Set(OnlineMatchPhase.ConnectionFailed, GameLocalization.Choose("No fue posible conectar con la partida.", "Unable to connect to the match."));
             PlayModeContext.UseLocalStory();
-            Debug.LogError("Connection failed or timed out. Re-enabling UI.");
-
-            if(conectionFailedMessage != null)
-            conectionFailedMessage.SetActive(true);
-
-            SetUIInteractivity(true);
         }
+
+        IsConnecting = false;
+        return success;
     }
 
-    public void HidPopup()
+    private const string ArenaScenePath = "Assets/Scenes/Multiplayer/OnlineArena.unity";
+
+    private int GetSceneIndexForMode(MatchModeDefinition matchMode)
     {
-        if (modeSelectionPopup != null)
-            modeSelectionPopup.SetActive(false);
-        if (characterSelectionPanel != null)
-            characterSelectionPanel.SetActive(false);
-        if (conectionFailedMessage != null)
-            conectionFailedMessage.SetActive(false);
+        int configured;
+        switch (matchMode.Id)
+        {
+            case MatchModeId.Duo2v2: configured = sceneIndex2v2; break;
+            case MatchModeId.Clash3v3: configured = sceneIndex3v3; break;
+            default: configured = sceneIndex1v1; break;
+        }
+
+        // El número serializado apunta a la arena por posición en Build
+        // Settings. Basta insertar una escena antes (por ejemplo, la de idioma)
+        // para que apunte a otra cosa. Resolverlo por ruta lo hace inmune.
+        int resolved = SceneUtility.GetBuildIndexByScenePath(ArenaScenePath);
+        if (resolved >= 0)
+        {
+            if (resolved != configured)
+                Debug.Log($"[LobbyManager] La arena está en el índice {resolved}, no en {configured}. Se usa el real.");
+            return resolved;
+        }
+
+        Debug.LogWarning($"[LobbyManager] '{ArenaScenePath}' no está en Build Settings. Se usa el índice {configured}.");
+        return configured;
+    }
+
+    public async Task CancelConnection()
+    {
+        if (networkLauncher != null)
+            await networkLauncher.CancelCurrentGame();
+        IsConnecting = false;
+        OnlineMatchState.Reset();
+        PlayModeContext.UseLocalStory();
     }
 
     public void ReturnToMainMenu()
@@ -124,206 +134,37 @@ public class LobbyManager : MonoBehaviour
         SceneManager.LoadScene("Main Menu");
     }
 
-    private int GetSceneIndexForMode(string modeName)
+    // Compatibility with Button events already serialized in MultiplayerMenu.unity.
+    public void OnClickOpenModeSelection() => menuController?.ShowModeSelection();
+
+    public async void OnClickSelectModeAndConnect(string modeName)
     {
-        switch (modeName)
-        {
-            case "1v1": return sceneIndex1v1;
-            case "2v2": return sceneIndex2v2;
-            case "3v3": return sceneIndex3v3;
-            default: return sceneIndex1v1;
-        }
+        await ConnectToMode(MatchModeCatalog.GetByKey(modeName));
     }
 
-    private void SetUIInteractivity(bool isInteractive)
+    public void HidPopup() => HideLegacyUi();
+
+    private void HideLegacyUi()
     {
-        if (popupCanvasGroup != null)
-        {
-            popupCanvasGroup.interactable = isInteractive;
-            popupCanvasGroup.blocksRaycasts = isInteractive;
-        }
+        if (modeSelectionPopup != null)
+            modeSelectionPopup.SetActive(false);
+        if (conectionFailedMessage != null)
+            conectionFailedMessage.SetActive(false);
     }
 
-    private static void ConfigureModeAvailability()
+    private void ResolveNetworkLauncher()
     {
-        foreach (Button button in FindObjectsByType<Button>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-        {
-            TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
-            if (label == null) continue;
+        if (networkLauncher != null)
+            return;
 
-            string mode = label.text.Trim();
-            string normalizedMode = mode.ToLowerInvariant();
-            bool isDuo = normalizedMode.Contains("2v2") || normalizedMode.Contains("2 v 2") || normalizedMode.Contains("dúo") || normalizedMode.Contains("duo");
-            bool isClash = normalizedMode.Contains("3v3") || normalizedMode.Contains("3 v 3") || normalizedMode.Contains("clash");
-            if (!isDuo && !isClash) continue;
+        networkLauncher = GetComponent<NetworkLauncher>();
+        if (networkLauncher == null)
+            networkLauncher = FindFirstObjectByType<NetworkLauncher>();
 
-            button.interactable = false;
-            label.text = isDuo
-                ? "Dúo (2v2) · Próximamente"
-                : "Clash (3v3) · Próximamente";
-            label.color = new Color(0.55f, 0.53f, 0.50f, 1f);
-        }
-    }
-
-    private void BuildCharacterSelection()
-    {
-        Canvas canvas = FindFirstObjectByType<Canvas>();
-        if (canvas == null || canvas.transform.Find("Multiplayer Character Selector") != null) return;
-
-        characterSelectionPanel = CreateUiObject("Multiplayer Character Selector", canvas.transform);
-        RectTransform panelRect = characterSelectionPanel.GetComponent<RectTransform>();
-        panelRect.anchorMin = panelRect.anchorMax = panelRect.pivot = new Vector2(0.5f, 0.5f);
-        panelRect.anchoredPosition = new Vector2(300f, 0f);
-        panelRect.sizeDelta = new Vector2(500f, 500f);
-        Image panelImage = characterSelectionPanel.AddComponent<Image>();
-        panelImage.color = new Color(0.055f, 0.035f, 0.070f, 0.97f);
-
-        CreateText(characterSelectionPanel.transform, "Elige tu personaje", new Vector2(0f, 205f), new Vector2(450f, 56f), 32f);
-        characterSelectionStatus = CreateText(characterSelectionPanel.transform, "Seleccionado: Quietmor", new Vector2(0f, 158f), new Vector2(450f, 40f), 20f);
-
-        for (int i = 0; i < CharacterNames.Length; i++)
-        {
-            int characterIndex = i;
-            int column = i % 2;
-            int row = i / 2;
-            Vector2 position = new Vector2(column == 0 ? -115f : 115f, 75f - row * 92f);
-            Button button = CreateCharacterButton(characterSelectionPanel.transform, CharacterNames[i], position);
-            bool available = IsCharacterAvailable(characterIndex);
-            button.interactable = available;
-            TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
-            if (!available && label != null)
-            {
-                label.text = CharacterNames[i] + " · Bloqueado";
-                label.fontSize = 15f;
-                label.color = new Color(0.48f, 0.47f, 0.45f, 1f);
-            }
-            if (available)
-                button.onClick.AddListener(() => SelectCharacter(characterIndex));
-            characterButtons[characterIndex] = button;
-        }
-
-        RefreshCharacterSelection();
-        characterSelectionPanel.SetActive(false);
-    }
-
-    private void SelectCharacter(int characterIndex)
-    {
-        if (!IsCharacterAvailable(characterIndex)) return;
-
-        selectedCharacterIndex = characterIndex;
-        PlayerPrefs.SetInt("SelectedCharacterIndex", characterIndex);
-        PlayerPrefs.SetString("SelectedCharacter", CharacterNames[characterIndex]);
-        PlayerPrefs.Save();
-        RefreshCharacterSelection();
-    }
-
-    private void RefreshCharacterSelection()
-    {
-        if (characterSelectionStatus != null)
-        {
-            characterSelectionStatus.text = selectedCharacterIndex >= 0 && selectedCharacterIndex < CharacterNames.Length
-                ? $"Seleccionado: {CharacterNames[selectedCharacterIndex]}"
-                : "Selecciona 1 para el duelo";
-            characterSelectionStatus.color = new Color(0.89f, 0.87f, 0.79f, 1f);
-        }
-
-        foreach (KeyValuePair<int, Button> entry in characterButtons)
-        {
-            Image image = entry.Value.targetGraphic as Image;
-            if (image != null)
-                image.color = !IsCharacterAvailable(entry.Key)
-                    ? new Color(0.10f, 0.10f, 0.11f, 0.72f)
-                    : entry.Key == selectedCharacterIndex
-                    ? new Color(0.49f, 0.36f, 0.12f, 1f)
-                    : new Color(0.08f, 0.15f, 0.13f, 1f);
-        }
-    }
-
-    private static bool IsCharacterAvailable(int characterIndex)
-    {
-        return characterIndex == QuietmorCharacterIndex;
-    }
-
-    private void ConfigureModePopupLayout()
-    {
-        if (modeSelectionPopup == null) return;
-
-        RectTransform popupRect = modeSelectionPopup.GetComponent<RectTransform>();
-        if (popupRect != null)
-        {
-            popupRect.anchorMin = popupRect.anchorMax = popupRect.pivot = new Vector2(0.5f, 0.5f);
-            popupRect.anchoredPosition = new Vector2(-300f, 0f);
-            popupRect.sizeDelta = new Vector2(520f, 500f);
-            popupRect.localScale = Vector3.one;
-        }
-
-        foreach (Button button in modeSelectionPopup.GetComponentsInChildren<Button>(true))
-        {
-            TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
-            if (label == null) continue;
-
-            string normalized = label.text.ToLowerInvariant();
-            bool isModeButton = normalized.Contains("1 vs 1") || normalized.Contains("1v1") ||
-                                normalized.Contains("2v2") || normalized.Contains("2 v 2") ||
-                                normalized.Contains("3v3") || normalized.Contains("3 v 3") ||
-                                normalized.Contains("duel") || normalized.Contains("dúo") ||
-                                normalized.Contains("clash");
-            if (!isModeButton) continue;
-
-            bool isDuel = normalized.Contains("1 vs 1") || normalized.Contains("1v1") || normalized.Contains("duel");
-            bool isDuo = normalized.Contains("2v2") || normalized.Contains("2 v 2") || normalized.Contains("dúo") || normalized.Contains("duo");
-
-            RectTransform buttonRect = button.GetComponent<RectTransform>();
-            buttonRect.anchorMin = buttonRect.anchorMax = buttonRect.pivot = new Vector2(0.5f, 0.5f);
-            buttonRect.anchoredPosition = new Vector2(0f, isDuel ? 90f : isDuo ? 0f : -90f);
-            buttonRect.sizeDelta = new Vector2(460f, 76f);
-            buttonRect.localScale = Vector3.one;
-
-            label.enableAutoSizing = false;
-            label.fontSize = 27f;
-            if (isDuel)
-                label.text = "Entrar al duelo 1v1";
-            label.textWrappingMode = TextWrappingModes.NoWrap;
-            label.overflowMode = TextOverflowModes.Ellipsis;
-            label.alignment = TextAlignmentOptions.Center;
-            label.margin = new Vector4(12f, 4f, 12f, 4f);
-        }
-    }
-
-    private static Button CreateCharacterButton(Transform parent, string label, Vector2 position)
-    {
-        GameObject gameObject = CreateUiObject(label + " Button", parent);
-        RectTransform rect = gameObject.GetComponent<RectTransform>();
-        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = position;
-        rect.sizeDelta = new Vector2(210f, 68f);
-        Image image = gameObject.AddComponent<Image>();
-        Button button = gameObject.AddComponent<Button>();
-        button.targetGraphic = image;
-        CreateText(gameObject.transform, label, Vector2.zero, new Vector2(198f, 58f), 18f);
-        return button;
-    }
-
-    private static TMP_Text CreateText(Transform parent, string value, Vector2 position, Vector2 size, float fontSize)
-    {
-        GameObject gameObject = CreateUiObject(value + " Text", parent);
-        RectTransform rect = gameObject.GetComponent<RectTransform>();
-        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = position;
-        rect.sizeDelta = size;
-        TextMeshProUGUI text = gameObject.AddComponent<TextMeshProUGUI>();
-        text.text = value;
-        text.fontSize = fontSize;
-        text.color = new Color(0.89f, 0.87f, 0.79f, 1f);
-        text.alignment = TextAlignmentOptions.Center;
-        text.raycastTarget = false;
-        return text;
-    }
-
-    private static GameObject CreateUiObject(string name, Transform parent)
-    {
-        GameObject gameObject = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer));
-        gameObject.transform.SetParent(parent, false);
-        return gameObject;
+        // NetworkLauncher no requiere referencias serializadas, por lo que esta
+        // recuperación mantiene funcional el lobby incluso si una escena antigua
+        // perdió el enlace durante una migración de nombres.
+        if (networkLauncher == null)
+            networkLauncher = gameObject.AddComponent<NetworkLauncher>();
     }
 }

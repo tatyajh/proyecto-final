@@ -34,6 +34,7 @@ public static class MenuVisualPolish
         if (!scene.path.Contains("/Menus/"))
             return;
 
+        EnsureEventSystem();
         ConfigureResponsiveCanvas(scene);
         InstallMenuBackdrop(scene);
 
@@ -54,6 +55,19 @@ public static class MenuVisualPolish
             StyleStoryMenu(scene);
     }
 
+    /// <summary>
+    /// Sin EventSystem ningún botón responde al clic. "Main Settings" y "Lobby"
+    /// no lo traían, así que se entraba a Ajustes y no había forma de volver.
+    /// </summary>
+    private static void EnsureEventSystem()
+    {
+        if (Object.FindFirstObjectByType<EventSystem>() != null)
+            return;
+
+        GameObject host = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+        Debug.Log("[MenuVisualPolish] La escena no tenía EventSystem. Se creó uno para que la UI responda.");
+    }
+
     private static void ConfigureResponsiveCanvas(Scene scene)
     {
         foreach (GameObject root in scene.GetRootGameObjects())
@@ -64,6 +78,21 @@ public static class MenuVisualPolish
                 scaler.referenceResolution = new Vector2(1280f, 720f);
                 scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
                 scaler.matchWidthOrHeight = 0.5f;
+
+                RectTransform canvasRect = scaler.GetComponent<RectTransform>();
+                if (canvasRect != null)
+                    canvasRect.localScale = Vector3.one;
+            }
+
+            // Los contenedores de layout traían escalas a mano (el del menú
+            // principal estaba en 3.92), así que multiplicaban cualquier tamaño
+            // que pidiera el código y los botones salían enormes. El CanvasScaler
+            // ya adapta la UI a la resolución: estas escalas sobran.
+            foreach (LayoutGroup group in root.GetComponentsInChildren<LayoutGroup>(true))
+            {
+                RectTransform groupRect = group.GetComponent<RectTransform>();
+                if (groupRect != null)
+                    groupRect.localScale = Vector3.one;
             }
         }
     }
@@ -97,6 +126,7 @@ public static class MenuVisualPolish
             text.fontStyle = FontStyles.Bold;
             text.characterSpacing = 1.5f;
             text.color = BoneWhite;
+            MenuTheme.ApplyDisplayFont(text);
             return;
         }
 
@@ -106,7 +136,14 @@ public static class MenuVisualPolish
             text.fontStyle = FontStyles.Bold;
             text.characterSpacing = 3f;
             text.color = AgedGold;
+            MenuTheme.ApplyDisplayFont(text);
+            return;
         }
+
+        // El resto del texto va en la serif de lectura, no en la fuente por
+        // defecto de TextMeshPro: es lo que hacía que los menús se vieran
+        // genéricos frente al resto del juego.
+        MenuTheme.ApplyBodyFont(text);
     }
 
     private static void StyleNameEntry(Scene scene)
@@ -136,11 +173,11 @@ public static class MenuVisualPolish
 
         if (welcome != null)
         {
-            ConfigureCenteredRect(welcome.rectTransform, new Vector2(900f, 110f), new Vector2(0f, 170f));
-            welcome.fontSize = 42f;
+            ConfigureCenteredRect(welcome.rectTransform, new Vector2(760f, 84f), new Vector2(0f, 150f));
+            welcome.fontSize = 32f;
             welcome.alignment = TextAlignmentOptions.Center;
             welcome.margin = new Vector4(12f, 8f, 12f, 8f);
-            welcome.text = "¿Cómo te llamas, viajero?";
+            welcome.text = GameLocalization.Choose("¿Cuál es tu nombre?", "What is your name?");
         }
 
         if (input != null)
@@ -156,7 +193,7 @@ public static class MenuVisualPolish
 
             if (input.placeholder is TMP_Text placeholder)
             {
-                placeholder.text = "Escribe tu nombre";
+                placeholder.text = GameLocalization.Choose("Escribe tu nombre", "Enter your name");
                 placeholder.color = new Color(AgedGold.r, AgedGold.g, AgedGold.b, 0.72f);
                 placeholder.fontSize = 26f;
                 placeholder.alignment = TextAlignmentOptions.Center;
@@ -172,7 +209,7 @@ public static class MenuVisualPolish
             TMP_Text label = continueButton.GetComponentInChildren<TMP_Text>(true);
             if (label != null)
             {
-                label.text = "Continuar";
+                label.text = GameLocalization.Choose("Continuar", "Continue");
                 label.fontSize = 28f;
                 label.alignment = TextAlignmentOptions.Center;
             }
@@ -183,7 +220,7 @@ public static class MenuVisualPolish
             ConfigureCenteredRect(error.rectTransform, new Vector2(700f, 70f), new Vector2(0f, -175f));
             error.fontSize = 24f;
             error.alignment = TextAlignmentOptions.Center;
-            error.text = "Escribe un nombre para continuar.";
+            error.text = GameLocalization.Choose("Escribe un nombre para continuar.", "Enter a name to continue.");
         }
     }
 
@@ -199,10 +236,32 @@ public static class MenuVisualPolish
 
                 if (text.name.ToLowerInvariant().Contains("welcome") || parentName.Contains("welcome"))
                 {
-                    ConfigureCenteredRect(text.rectTransform, new Vector2(760f, 90f), new Vector2(0f, 230f));
-                    text.fontSize = 34f;
+                    ConfigureCenteredRect(text.rectTransform, new Vector2(700f, 60f), new Vector2(0f, 170f));
+                    text.fontSize = 26f;
                     text.alignment = TextAlignmentOptions.Center;
-                    text.enableWordWrapping = false;
+                    text.textWrappingMode = TextWrappingModes.NoWrap;
+                }
+            }
+
+            // El contenedor estiraba los botones a todo su ancho, así que el
+            // tamaño pedido abajo se ignoraba y quedaban gigantes.
+            foreach (VerticalLayoutGroup group in root.GetComponentsInChildren<VerticalLayoutGroup>(true))
+            {
+                group.childForceExpandWidth = false;
+                group.childForceExpandHeight = false;
+                group.childControlWidth = false;
+                group.childControlHeight = false;
+                group.childAlignment = TextAnchor.MiddleCenter;
+                group.spacing = 14f;
+
+                // El contenedor medía 300x100 y se apoyaba en la escala para
+                // caber. Con escala 1 necesita el tamaño real de los 3 botones.
+                RectTransform groupRect = group.GetComponent<RectTransform>();
+                if (groupRect != null)
+                {
+                    groupRect.sizeDelta = new Vector2(400f, 214f);
+                    groupRect.anchorMin = groupRect.anchorMax = groupRect.pivot = new Vector2(0.5f, 0.5f);
+                    groupRect.anchoredPosition = new Vector2(0f, -40f);
                 }
             }
 
@@ -213,19 +272,26 @@ public static class MenuVisualPolish
                     continue;
 
                 RectTransform rect = button.GetComponent<RectTransform>();
-                rect.sizeDelta = new Vector2(540f, 78f);
+                rect.sizeDelta = new Vector2(360f, 58f);
                 LayoutElement layout = button.GetComponent<LayoutElement>();
                 if (layout == null) layout = button.gameObject.AddComponent<LayoutElement>();
-                layout.preferredWidth = 540f;
-                layout.preferredHeight = 78f;
+                layout.preferredWidth = 360f;
+                layout.preferredHeight = 58f;
 
                 TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
                 if (label != null)
                 {
-                    label.fontSize = 30f;
-                    if (name.Contains("story")) label.text = "Modo historia";
-                    else if (name.Contains("online")) label.text = "Multijugador";
-                    else label.text = "Ajustes";
+                    // MainMenuController añade " · Próximamente" después de
+                    // esto, así que el texto puede crecer bastante. Autosize
+                    // con mínimo evita que se salga del botón.
+                    label.enableAutoSizing = true;
+                    label.fontSizeMin = 13f;
+                    label.fontSizeMax = 21f;
+                    label.textWrappingMode = TextWrappingModes.NoWrap;
+                    label.margin = new Vector4(10f, 2f, 10f, 2f);
+                    if (name.Contains("story")) label.text = GameLocalization.Choose("Modo historia", "Story mode");
+                    else if (name.Contains("online")) label.text = GameLocalization.Choose("Multijugador", "Multiplayer");
+                    else label.text = GameLocalization.Choose("Ajustes", "Settings");
                 }
             }
         }
@@ -239,12 +305,12 @@ public static class MenuVisualPolish
             {
                 if (text.text == "Your adventure awaits")
                 {
-                    text.text = "Tu aventura te espera";
+                    text.text = GameLocalization.Choose("Tu aventura te espera", "Your adventure awaits");
                     text.fontSize = 34f;
                 }
                 else if (text.text == "Button")
                 {
-                    text.text = "Comenzar";
+                    text.text = GameLocalization.Choose("Comenzar", "Start");
                     text.fontSize = 22f;
                 }
             }

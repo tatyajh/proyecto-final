@@ -1230,7 +1230,7 @@ MonoBehaviour:
   settingsScene: Main Settings
   multiplayerState: 1
   storyModeAvailable: 0
-  settingsAvailable: 0
+  settingsAvailable: 1
 --- !u!4 &1474852704
 Transform:
   m_ObjectHideFlags: 0
