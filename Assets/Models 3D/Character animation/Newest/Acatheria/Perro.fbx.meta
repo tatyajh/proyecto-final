@@ -1,9 +1,14 @@
 fileFormatVersion: 2
-guid: 4d015c0a4f1ae4110b91f95b85fbfdf1
+guid: 31a148f19307a4a70894858cb992e8cd
 ModelImporter:
   serializedVersion: 24200
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: perro_mat_actualizado
+    second: {fileID: 2100000, guid: e4264e5ea3bfd3b49b26dd0d2d9c9c33, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

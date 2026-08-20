@@ -1,9 +1,14 @@
 fileFormatVersion: 2
-guid: 31a148f19307a4a70894858cb992e8cd
+guid: ad3387cf65a604555a4bb845a468ea4a
 ModelImporter:
   serializedVersion: 24200
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Campana sin voz_mat
+    second: {fileID: 2100000, guid: 5e35e56567489874b91db5e63dddafa4, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
