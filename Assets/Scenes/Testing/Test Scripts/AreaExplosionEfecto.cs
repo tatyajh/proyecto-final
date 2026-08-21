@@ -11,10 +11,6 @@ public class AreaExplosionEfecto : MonoBehaviour
     public int cantidadDeParticulas = 60;
     public float duracionDelEfecto = 0.5f;
 
-    // =========================================================================
-    // 🎮 ME CÁNICAS PRINCIPALES (Lo que hace el efecto)
-    // =========================================================================
-
     // FASE 1: MOVER EL ÁREA (Usa esto desde el joystick para actualizar la posición)
     public void MoverAreaAPosicion(Vector3 nuevaPosicion)
     {

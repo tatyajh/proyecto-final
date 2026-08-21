@@ -3,10 +3,6 @@ using UnityEngine;
 
 public class EfectoZonaVeneno : MonoBehaviour
 {
-    // =========================================================================
-    // ⚙️ CONFIGURACIÓN EN EL INSPECTOR (Cualquiera lo puede modificar aquí)
-    // =========================================================================
-
     [Header("1. TIEMPO Y TAMAÑO")]
     [Tooltip("Duración en segundos que permanece activo el efecto visual.")]
     public float duracionDelEfecto = 4.0f;
