@@ -1,106 +1,430 @@
-using System.IO;
 using System.Linq;
+using System.IO;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
+/// <summary>
+/// Genera los prefabs jugables a partir de los FBX que entrega arte.
+///
+/// Antes solo contemplaba a Quietmor con la ruta escrita a mano, así que los
+/// personajes nuevos aparecían en el menú como cápsula aunque su modelo ya
+/// estuviera en el proyecto. Ahora recorre la tabla de abajo: en cuanto un FBX
+/// existe, su prefab se crea en Resources/Characters con el nombre que espera
+/// CharacterCatalog, y el personaje sale en el juego sin tocar código.
+/// </summary>
 [InitializeOnLoad]
 public static class CharacterPrototypeImporter
 {
-    private const string ModelPath = "Assets/Models 3D/Character animation/Campana sin voz rig.fbx";
     private const string OutputFolder = "Assets/Resources/Characters";
-    private const string PrefabPath = OutputFolder + "/CampanaPrototype.prefab";
-    private const string ControllerPath = OutputFolder + "/CampanaPrototype.controller";
-    private const string ImportMarker = "BlightedBlossomsPrototypeCharacterV3";
+    private const string ImportMarker = "BlightedBlossomsPrototypeCharacterV6";
+
+    private sealed class CharacterSource
+    {
+        public readonly string CatalogName;   // nombre del prefab que busca CharacterCatalog
+        public readonly string ModelPath;
+        public readonly string MaterialPath;
+        public readonly string ControllerPath;
+
+        public CharacterSource(string catalogName, string modelPath, string materialPath,
+            string controllerPath = null)
+        {
+            CatalogName = catalogName;
+            ModelPath = modelPath;
+            MaterialPath = materialPath;
+            ControllerPath = controllerPath;
+        }
+
+        public string PrefabPath => $"{OutputFolder}/{CatalogName}.prefab";
+    }
+
+    // Quietmor conserva el nombre CampanaPrototype porque ya hay escenas y un
+    // Animator Controller apuntando a él; renombrarlo rompería esas referencias.
+    private static readonly CharacterSource[] Sources =
+    {
+        new CharacterSource(
+            "CampanaPrototype",
+            "Assets/Models 3D/Character animation/Newest/Quietmor/Campana sin voz rig.fbx",
+            "Assets/Models 3D/Character animation/Newest/Quietmor/Campana sin voz_mat.mat",
+            OutputFolder + "/CampanaPrototype.controller"),
+        new CharacterSource(
+            "Solmara",
+            "Assets/Models 3D/Character animation/Newest/Solmara/reina girasol.fbx",
+            "Assets/Models 3D/Character animation/Newest/Solmara/Sunflower_mat_actualizado.mat",
+            OutputFolder + "/Solmara.controller"),
+        new CharacterSource(
+            "Acatheria",
+            "Assets/Models 3D/Character animation/Newest/Acatheria/Perro.fbx",
+            "Assets/Models 3D/Character animation/Newest/Acatheria/perro_mat_actualizado.mat",
+            OutputFolder + "/Acatheria.controller")
+    };
 
     static CharacterPrototypeImporter()
     {
         EditorApplication.delayCall += EnsurePrototypeAssets;
     }
 
-    [MenuItem("Blighted Blossoms/Actualizar personaje prototipo")]
+    [MenuItem("Blighted Blossoms/Actualizar personajes")]
     public static void EnsurePrototypeAssets()
     {
-        GameObject model = AssetDatabase.LoadAssetAtPath<GameObject>(ModelPath);
-        if (model == null) return;
-
-        Directory.CreateDirectory(OutputFolder);
-        AssetDatabase.Refresh();
-        if (ConfigureAnimationImport())
+        if (EditorApplication.isCompiling || EditorApplication.isUpdating)
         {
             EditorApplication.delayCall += EnsurePrototypeAssets;
             return;
         }
 
+        if (!AssetDatabase.IsValidFolder(OutputFolder))
+        {
+            AssetDatabase.CreateFolder("Assets/Resources", "Characters");
+        }
+
+        ConfigurePortraitImporters();
+
+        int built = 0;
+        foreach (CharacterSource source in Sources)
+        {
+            if (BuildPrefab(source)) built++;
+        }
+
+        if (built > 0)
+        {
+            AssetDatabase.SaveAssets();
+            Debug.Log($"[CharacterPrototypeImporter] {built} personaje(s) actualizados en {OutputFolder}.");
+        }
+    }
+
+    private static void ConfigurePortraitImporters()
+    {
+        const string portraitFolder = "Assets/Resources/UI/Portraits";
+        if (!AssetDatabase.IsValidFolder(portraitFolder)) return;
+
+        foreach (string guid in AssetDatabase.FindAssets("t:Texture2D", new[] { portraitFolder }))
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            TextureImporter importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer == null) continue;
+
+            bool dirty = false;
+            if (!importer.alphaIsTransparency) { importer.alphaIsTransparency = true; dirty = true; }
+            if (importer.mipmapEnabled) { importer.mipmapEnabled = false; dirty = true; }
+            if (!importer.sRGBTexture) { importer.sRGBTexture = true; dirty = true; }
+            if (importer.textureCompression != TextureImporterCompression.CompressedHQ)
+            {
+                importer.textureCompression = TextureImporterCompression.CompressedHQ;
+                dirty = true;
+            }
+
+            if (dirty) importer.SaveAndReimport();
+        }
+    }
+
+    private static bool BuildPrefab(CharacterSource source)
+    {
+        GameObject model = AssetDatabase.LoadAssetAtPath<GameObject>(source.ModelPath);
+        if (model == null)
+        {
+            // Normal mientras arte no entrega ese personaje: el menú lo mostrará
+            // como cápsula provisional y el juego sigue funcionando.
+            return false;
+        }
+
+        ConfigureModelImporter(source.ModelPath);
+        ConfigureTextureImporters(source.ModelPath);
+        Material characterMaterial = EnsureCharacterMaterial(source);
+        BuildAnimatorController(source);
+
+        // Solo se regenera si el marcador cambió, para no reescribir el prefab
+        // (y perder ajustes manuales) en cada recarga de scripts.
+        GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(source.PrefabPath);
+        if (existing != null && AssetDatabase.GetLabels(existing).Length > 0 &&
+            System.Array.IndexOf(AssetDatabase.GetLabels(existing), ImportMarker) >= 0)
+        {
+            return false;
+        }
+
         GameObject instance = Object.Instantiate(model);
-        instance.name = "Campana Prototype Character";
+        instance.name = source.CatalogName;
 
         foreach (Collider collider in instance.GetComponentsInChildren<Collider>(true))
             Object.DestroyImmediate(collider);
 
-        // El Animator se borraba porque com.unity.modules.animation no estaba
-        // en el proyecto y dejaba un componente faltante. Ya está habilitado,
-        // así que ahora se conserva y se le conecta el controller: sin esto el
-        // personaje entraba a la arena completamente inmóvil.
-        Animator animator = instance.GetComponentInChildren<Animator>(true);
-        if (animator == null)
-            animator = instance.AddComponent<Animator>();
+        AssignCharacterMaterial(instance, characterMaterial);
+        AttachAnimator(instance, source);
 
-        if (animator.runtimeAnimatorController == null)
+        GameObject saved = PrefabUtility.SaveAsPrefabAsset(instance, source.PrefabPath);
+        Object.DestroyImmediate(instance);
+
+        if (saved != null)
+            AssetDatabase.SetLabels(saved, new[] { ImportMarker });
+
+        return true;
+    }
+
+    /// <summary>
+    /// Los FBX de arte usan un único atlas por personaje. Unity puede volver a
+    /// enlazar el material embebido al reimportar y dejar la malla gris; por
+    /// eso la ruta canónica forma parte de la definición y se reasigna antes de
+    /// guardar el prefab. Si el shader personalizado no compila en la máquina,
+    /// Standard conserva al menos albedo, normal y metal.
+    /// </summary>
+    private static Material EnsureCharacterMaterial(CharacterSource source)
+    {
+        Material material = AssetDatabase.LoadAssetAtPath<Material>(source.MaterialPath);
+        if (material == null)
+        {
+            Debug.LogWarning($"[CharacterPrototypeImporter] No se encontró el material de {source.CatalogName}: {source.MaterialPath}");
+            return null;
+        }
+
+        Shader shader = material.shader;
+        if (shader != null && shader.isSupported) return material;
+
+        Texture albedo = material.HasProperty("_MainTex") ? material.GetTexture("_MainTex") : null;
+        Texture normal = material.HasProperty("_BumpMap") ? material.GetTexture("_BumpMap") : null;
+        Texture metallic = material.HasProperty("_MetallicMap") ? material.GetTexture("_MetallicMap") : null;
+        Shader fallback = Shader.Find("Standard");
+        if (fallback == null)
+        {
+            Debug.LogError($"[CharacterPrototypeImporter] El shader de {source.CatalogName} no es compatible y no existe Standard.");
+            return material;
+        }
+
+        material.shader = fallback;
+        if (albedo != null) material.SetTexture("_MainTex", albedo);
+        if (normal != null)
+        {
+            material.SetTexture("_BumpMap", normal);
+            material.EnableKeyword("_NORMALMAP");
+        }
+        if (metallic != null)
+        {
+            material.SetTexture("_MetallicGlossMap", metallic);
+            material.EnableKeyword("_METALLICGLOSSMAP");
+        }
+        EditorUtility.SetDirty(material);
+        return material;
+    }
+
+    private static void AssignCharacterMaterial(GameObject instance, Material material)
+    {
+        if (instance == null || material == null) return;
+
+        foreach (Renderer renderer in instance.GetComponentsInChildren<Renderer>(true))
+        {
+            Material[] slots = renderer.sharedMaterials;
+            if (slots == null || slots.Length == 0)
+            {
+                renderer.sharedMaterial = material;
+                continue;
+            }
+
+            for (int i = 0; i < slots.Length; i++) slots[i] = material;
+            renderer.sharedMaterials = slots;
+        }
+    }
+
+    /// <summary>
+    /// Sin Animator con controller el personaje entra a la arena inmóvil. Si el
+    /// personaje no trae controller propio se deja el Animator vacío: se moverá
+    /// por navegación aunque no tenga animación de idle todavía.
+    /// </summary>
+    private static void AttachAnimator(GameObject instance, CharacterSource source)
+    {
+        Animator animator = instance.GetComponentInChildren<Animator>(true);
+        if (animator == null) animator = instance.AddComponent<Animator>();
+
+        if (animator.runtimeAnimatorController == null && !string.IsNullOrEmpty(source.ControllerPath))
         {
             RuntimeAnimatorController controller =
-                AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(ControllerPath);
-            if (controller != null)
-                animator.runtimeAnimatorController = controller;
-            else
-                Debug.LogWarning($"[CharacterPrototypeImporter] No se encontró el controller en {ControllerPath}.");
+                AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(source.ControllerPath);
+            if (controller != null) animator.runtimeAnimatorController = controller;
         }
 
         animator.applyRootMotion = false;
         animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-
-        PrefabUtility.SaveAsPrefabAsset(instance, PrefabPath);
-        Object.DestroyImmediate(instance);
-        AssetDatabase.SaveAssets();
     }
 
-    [MenuItem("Blighted Blossoms/Ver personaje Heliandra")]
-    public static void OpenCharacterPreview()
+    private static void ConfigureModelImporter(string modelPath)
     {
-        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
-        if (prefab == null)
+        ModelImporter importer = AssetImporter.GetAtPath(modelPath) as ModelImporter;
+        if (importer == null) return;
+
+        bool dirty = false;
+
+        // Generic basta para estos rigs y evita el remapeo de huesos de Humanoid.
+        if (importer.animationType == ModelImporterAnimationType.None)
         {
-            EnsurePrototypeAssets();
-            prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
+            importer.animationType = ModelImporterAnimationType.Generic;
+            dirty = true;
         }
 
-        if (prefab != null)
+        // importMaterials quedó obsoleto y de solo lectura en Unity 6.
+        if (importer.materialImportMode == ModelImporterMaterialImportMode.None)
         {
-            Selection.activeObject = prefab;
-            EditorGUIUtility.PingObject(prefab);
-            AssetDatabase.OpenAsset(prefab);
+            importer.materialImportMode = ModelImporterMaterialImportMode.ImportStandard;
+            dirty = true;
+        }
+
+        // La rama de animación entregó las tomas correctas, pero al mover los
+        // FBX dejó las rutas duplicadas y los loops configurados solo en sus
+        // .meta experimentales. Aplicamos esa información sobre la ruta canónica.
+        ModelImporterClipAnimation[] clips = importer.clipAnimations;
+        if (clips == null || clips.Length == 0)
+        {
+            clips = importer.defaultClipAnimations;
+            dirty = clips != null && clips.Length > 0;
+        }
+
+        if (clips != null)
+        {
+            foreach (ModelImporterClipAnimation clip in clips)
+            {
+                string clipName = (clip.name ?? string.Empty).ToLowerInvariant();
+                bool shouldLoop = clipName.Contains("idle") || clipName.Contains("iddle") ||
+                                  clipName.Contains("walk") || clipName.Contains("running");
+                if (clip.loopTime == shouldLoop) continue;
+                clip.loopTime = shouldLoop;
+                dirty = true;
+            }
+
+            if (dirty) importer.clipAnimations = clips;
+        }
+
+        if (dirty)
+        {
+            importer.SaveAndReimport();
         }
     }
 
-    private static bool ConfigureAnimationImport()
+    private static void ConfigureTextureImporters(string modelPath)
     {
-        ModelImporter importer = AssetImporter.GetAtPath(ModelPath) as ModelImporter;
-        if (importer == null || importer.userData == ImportMarker) return false;
+        string folder = Path.GetDirectoryName(modelPath)?.Replace('\\', '/');
+        if (string.IsNullOrEmpty(folder)) return;
 
-        ModelImporterClipAnimation[] clips = importer.defaultClipAnimations
-            .Where(clip => clip.lastFrame - clip.firstFrame > 0.01f)
+        foreach (string guid in AssetDatabase.FindAssets("t:Texture2D", new[] { folder }))
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            TextureImporter importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer == null) continue;
+
+            string name = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
+            bool normalMap = name.Contains("normal") || name.EndsWith("_n") ||
+                             name.EndsWith("_nrm") || name.EndsWith("_norm");
+            bool dataMap = name.Contains("metallic") || name.Contains("roughness") ||
+                           name.Contains("height") || name.EndsWith("_rm");
+            bool colorMap = name.Contains("basecolor") || name.Contains("base_color") ||
+                            name.Contains("albedo") || name.Contains("diffuse");
+
+            bool dirty = false;
+            if (normalMap && importer.textureType != TextureImporterType.NormalMap)
+            {
+                importer.textureType = TextureImporterType.NormalMap;
+                dirty = true;
+            }
+
+            if ((dataMap || normalMap) && importer.sRGBTexture)
+            {
+                importer.sRGBTexture = false;
+                dirty = true;
+            }
+
+            if (colorMap && !importer.sRGBTexture)
+            {
+                importer.sRGBTexture = true;
+                dirty = true;
+            }
+
+            if (dirty) importer.SaveAndReimport();
+        }
+    }
+
+    /// <summary>
+    /// Los FBX entregados ya incluyen clips, pero en la rama de arte los
+    /// controllers quedaron ligados a rutas rotas. Se reconstruyen aquí con
+    /// parámetros comunes para que gameplay pueda conducir cualquier modelo.
+    /// </summary>
+    private static void BuildAnimatorController(CharacterSource source)
+    {
+        if (string.IsNullOrEmpty(source.ControllerPath)) return;
+
+        AnimatorController existing = AssetDatabase.LoadAssetAtPath<AnimatorController>(source.ControllerPath);
+        if (existing != null && existing.parameters.Any(parameter => parameter.name == "isMoving") &&
+            existing.parameters.Any(parameter => parameter.name == "attack") &&
+            existing.parameters.Any(parameter => parameter.name == "ultimate"))
+        {
+            return;
+        }
+
+        AnimationClip[] clips = System.Array.FindAll(
+            AssetDatabase.LoadAllAssetsAtPath(source.ModelPath),
+            asset => asset is AnimationClip clip && !clip.name.StartsWith("__preview__"))
+            .Cast<AnimationClip>()
             .ToArray();
-        foreach (ModelImporterClipAnimation clip in clips)
+        if (clips.Length == 0) return;
+
+        AnimationClip Find(params string[] terms) => System.Array.Find(clips, clip =>
+            System.Array.Exists(terms, term => clip.name.IndexOf(term, System.StringComparison.OrdinalIgnoreCase) >= 0));
+
+        AnimationClip idle = Find("idle", "iddle") ?? clips[0];
+        AnimationClip walk = Find("walk", "running");
+        AnimationClip attack = Find("attack", "action");
+        AnimationClip ultimate = Find("ulti");
+
+        AssetDatabase.DeleteAsset(source.ControllerPath);
+        AnimatorController controller = AnimatorController.CreateAnimatorControllerAtPath(source.ControllerPath);
+        controller.AddParameter("isMoving", AnimatorControllerParameterType.Bool);
+        controller.AddParameter("attack", AnimatorControllerParameterType.Trigger);
+        controller.AddParameter("ultimate", AnimatorControllerParameterType.Trigger);
+
+        AnimatorStateMachine machine = controller.layers[0].stateMachine;
+        AnimatorState idleState = machine.AddState("Idle");
+        idleState.motion = idle;
+        machine.defaultState = idleState;
+
+        if (walk != null)
         {
-            clip.loopTime = true;
-            clip.loopPose = true;
-            clip.keepOriginalPositionY = true;
-            clip.keepOriginalPositionXZ = true;
-            clip.keepOriginalOrientation = true;
+            AnimatorState walkState = machine.AddState("Move");
+            walkState.motion = walk;
+            AnimatorStateTransition toWalk = idleState.AddTransition(walkState);
+            toWalk.hasExitTime = false;
+            toWalk.duration = 0.14f;
+            toWalk.AddCondition(AnimatorConditionMode.If, 0f, "isMoving");
+            AnimatorStateTransition toIdle = walkState.AddTransition(idleState);
+            toIdle.hasExitTime = false;
+            toIdle.duration = 0.14f;
+            toIdle.AddCondition(AnimatorConditionMode.IfNot, 0f, "isMoving");
         }
 
-        importer.clipAnimations = clips;
-        importer.userData = ImportMarker;
-        importer.SaveAndReimport();
-        return true;
+        AddActionState(machine, idleState, attack, "Attack", "attack");
+        AddActionState(machine, idleState, ultimate, "Ultimate", "ultimate");
+        EditorUtility.SetDirty(controller);
+    }
+
+    private static void AddActionState(AnimatorStateMachine machine, AnimatorState idle,
+        AnimationClip clip, string stateName, string trigger)
+    {
+        if (clip == null) return;
+        AnimatorState state = machine.AddState(stateName);
+        state.motion = clip;
+        AnimatorStateTransition enter = machine.AddAnyStateTransition(state);
+        enter.hasExitTime = false;
+        enter.duration = 0.08f;
+        enter.AddCondition(AnimatorConditionMode.If, 0f, trigger);
+        AnimatorStateTransition exit = state.AddTransition(idle);
+        exit.hasExitTime = true;
+        exit.exitTime = 0.92f;
+        exit.duration = 0.12f;
+    }
+
+    [MenuItem("Blighted Blossoms/Regenerar personajes (forzar)")]
+    public static void ForceRebuild()
+    {
+        foreach (CharacterSource source in Sources)
+        {
+            GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(source.PrefabPath);
+            if (existing != null) AssetDatabase.SetLabels(existing, new string[0]);
+        }
+        EnsurePrototypeAssets();
     }
 }

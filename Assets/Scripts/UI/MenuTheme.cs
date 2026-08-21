@@ -24,6 +24,46 @@ public static class MenuTheme
     public static readonly Color RotBright = Hex(0x899A5E);
     public static readonly Color Ash = Hex(0x6A6274);
     public static readonly Color Line = new Color(0.714f, 0.569f, 0.247f, 0.22f);
+    // Borde de las tarjetas/botones con fondo del flujo de inicio: la misma
+    // idea que Line (oro translúcido) pero derivada del oro exacto del spec.
+    public static readonly Color IntroLine = WithAlpha(Hex(0x927139), 0.4f);
+
+    // Paleta exacta del paquete de specs de menú (/specs/menu-redesign),
+    // nombrada tal cual la entregó arte.
+    public static readonly Color NegroAbismal = Hex(0x11100F);
+    public static readonly Color CiruelaOscura = Hex(0x281D27);
+    public static readonly Color MarfilEnvejecido = Hex(0xD6C7A7);
+    public static readonly Color OroMarchito = Hex(0x927139);
+    public static readonly Color RojoLatente = Hex(0x652721);
+    public static readonly Color VerdeMusgoGris = Hex(0x455047);
+
+    // Paleta del flujo de inicio (estética Hollow Knight). Convive con la del
+    // GDD de arriba: esta manda en el prólogo y los menús, la otra en el HUD
+    // de la arena, que ya tiene su identidad dorada asentada.
+    //
+    // Los cinco tokens de abajo son los nombres que ya usan BlightedIntroFlow,
+    // EtherealButton, PrologueSequence, etc. — se mantienen para no reescribir
+    // decenas de sitios, pero ahora resuelven a los colores exactos del spec
+    // en vez de a los que se habían elegido a ojo en el primer borrador.
+    public static readonly Color VoidBlack = NegroAbismal;
+    public static readonly Color PanelTranslucent = CiruelaOscura;
+    public static readonly Color SpectralWhite = MarfilEnvejecido;
+    // El spec no define un color frío: sin uno, el título/aviso de cada fase
+    // (que antes usaba un azul pálido) se aplana contra el marfil del texto
+    // de cuerpo. Un marfil oscurecido cumple el mismo rol estructural
+    // ("texto secundario, un tono más apagado que el principal") sin salirse
+    // de la paleta entregada.
+    public static readonly Color PaleBlue = BoneDim;
+    public static readonly Color WitheredPurple = Ash;
+
+    /// <summary>
+    /// Color de brillo para que el Bloom lo recoja. Se empuja por encima de 1
+    /// en HDR: sin eso el post-procesado no tiene nada que florecer.
+    /// </summary>
+    public static Color Glow(Color color, float intensity = 1.6f)
+    {
+        return new Color(color.r * intensity, color.g * intensity, color.b * intensity, color.a);
+    }
 
     private static TMP_FontAsset display;
     private static TMP_FontAsset body;

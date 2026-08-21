@@ -26,6 +26,15 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
     {
         ArenaCenter = spawnPosition;
 
+        // La misma arena sirve para la prueba local. En ese contexto el
+        // Player ya existe en la escena y no debe buscar Photon ni reportar
+        // como error la ausencia intencional de NetworkRunner.
+        if (PlayModeContext.Current != PlayMode.Multiplayer)
+        {
+            enabled = false;
+            return;
+        }
+
         // 1. Buscamos el Runner global que viene vivo desde la escena del Menú
         _runner = FindFirstObjectByType<NetworkRunner>();
 
@@ -149,7 +158,8 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
         NetworkLauncher.DestroyStaleRunners();
         OnlineMatchState.Reset();
         PlayModeContext.UseLocalStory();
-        UnityEngine.SceneManagement.SceneManager.LoadScene("MultiplayerMenu");
+        BlightedIntroFlow.ReturnDirectlyToMenu = true;
+        UnityEngine.SceneManagement.SceneManager.LoadScene(GameScenes.Intro);
     }
 
     private static int CountActivePlayers(NetworkRunner runner)

@@ -10,7 +10,7 @@ public class PlayerController : NetworkBehaviour
 {
     public const int MaxHealth = 100;
     // Visual scale only. Navigation, collider, movement and combat ranges stay unchanged.
-    private const float DesiredCharacterHeight = 4.5f;
+    private const float DesiredCharacterHeight = 28f;
     private static readonly string[] CharacterNames =
     {
         "Heliandra", "Lunara", "Solmara", "Quietmor", "Acatheria", "Terramor"
@@ -42,8 +42,10 @@ public class PlayerController : NetworkBehaviour
     private float basicReadyAt;
     private float ultimateReadyAt;
     private Transform prototypeVisual;
+    private Animator prototypeAnimator;
     private int prototypeCharacterIndex = -1;
     private bool exitConfirmationVisible;
+    private MatchOutcome currentOutcome;
 
     [Networked] public int NetworkHealth { get; private set; }
     [Networked] public NetworkBool CombatReady { get; private set; }
@@ -55,6 +57,23 @@ public class PlayerController : NetworkBehaviour
     public int CurrentHealth => Object == null || !CombatReady ? localHealth : NetworkHealth;
     public bool IsDefeated => (Object == null || CombatReady) && CurrentHealth <= 0;
     public bool HasLocalControl => CanControlPlayer();
+    public string PlayerDisplayName => GetDisplayName();
+    public float BasicCooldownRemaining => Mathf.Max(0f, basicReadyAt - Time.unscaledTime);
+    public float UltimateCooldownRemaining => Mathf.Max(0f, ultimateReadyAt - Time.unscaledTime);
+    public bool ExitConfirmationVisible => exitConfirmationVisible;
+    public string NetworkStatusText => Object != null ? OnlineMatchState.Message : string.Empty;
+    public bool IsOnlinePlayer => Object != null;
+    public string TeamStatusText => Object == null
+        ? string.Empty
+        : $"{MatchContext.Mode.DisplayName} · {GameLocalization.Choose("Equipo", "Team")} {MatchTeams.NameOf(Team)}";
+    public Color TeamDisplayColor => Object == null
+        ? new Color(0.94f, 0.91f, 0.82f)
+        : MatchTeams.ColorOf(Team);
+    public string MatchResultText => currentOutcome == MatchOutcome.Victory
+        ? GameLocalization.Choose("VICTORIA", "VICTORY")
+        : currentOutcome == MatchOutcome.Defeat
+            ? GameLocalization.Choose("DERROTA", "DEFEAT")
+            : string.Empty;
 
     /// <summary>Equipo efectivo. Fuera de red (modo historia) todos son del mismo bando.</summary>
     public int Team => Object == null ? MatchTeams.Bloom : TeamId;
@@ -108,6 +127,12 @@ public class PlayerController : NetworkBehaviour
         }
 
         ApplyPlayerColor();
+
+        if (Object == null && PlayModeContext.Current == PlayMode.Training)
+            CombatTrainingBootstrap.EnsureForLocalPlayer(this);
+
+        if (CanControlPlayer())
+            CombatHudController.EnsureFor(this);
     }
 
     private void OnApplicationFocus(bool hasFocus)
@@ -177,6 +202,8 @@ public class PlayerController : NetworkBehaviour
 
     private void Update()
     {
+        UpdateMatchOutcome();
+
         if (Input.GetKeyDown(KeyCode.Escape))
         {
             // Escape ya no abandona de golpe. En WebGL se pulsa por reflejo para
@@ -201,6 +228,7 @@ public class PlayerController : NetworkBehaviour
             return;
 
         ProcessAttackInput();
+        UpdateCharacterAnimation(agent.velocity.sqrMagnitude > 0.04f);
 
         bool isAiming = combatController != null && combatController.IsAiming;
 
@@ -277,6 +305,8 @@ public class PlayerController : NetworkBehaviour
         if (ultimate) ultimateReadyAt = now + 8f;
         else basicReadyAt = now + 1f;
 
+        TriggerCharacterAnimation(ultimate ? "ultimate" : "attack");
+
         float range = ultimate ? 8f : 5f;
         float radius = ultimate ? 1.25f : 0.65f;
         int damage = ultimate ? 40 : 20;
@@ -289,6 +319,7 @@ public class PlayerController : NetworkBehaviour
             QueryTriggerInteraction.Ignore);
 
         PlayerController closestTarget = null;
+        DestructiblePracticeTarget closestPracticeTarget = null;
         float closestDistance = float.MaxValue;
         float closestObstacleDistance = range;
         foreach (RaycastHit hit in hits)
@@ -302,6 +333,14 @@ public class PlayerController : NetworkBehaviour
 
             if (candidate == null)
             {
+                DestructiblePracticeTarget practiceTarget = hit.collider.GetComponentInParent<DestructiblePracticeTarget>();
+                if (practiceTarget != null && hit.distance < closestDistance)
+                {
+                    closestDistance = hit.distance;
+                    closestPracticeTarget = practiceTarget;
+                    closestTarget = null;
+                    continue;
+                }
                 closestObstacleDistance = Mathf.Min(closestObstacleDistance, hit.distance);
                 continue;
             }
@@ -314,6 +353,7 @@ public class PlayerController : NetworkBehaviour
             {
                 closestDistance = hit.distance;
                 closestTarget = candidate;
+                closestPracticeTarget = null;
             }
         }
 
@@ -326,6 +366,8 @@ public class PlayerController : NetworkBehaviour
         // En calentamiento el golpe se ve pero no resta vida a nadie.
         if (!IsWarmingUp && closestTarget != null && closestDistance <= closestObstacleDistance + 0.01f)
             closestTarget.ReceiveDamage(damage);
+        else if (closestPracticeTarget != null && closestDistance <= closestObstacleDistance + 0.01f)
+            closestPracticeTarget.ApplyDamage(damage);
 
         return true;
     }
@@ -358,9 +400,14 @@ public class PlayerController : NetworkBehaviour
         // Salía a 0.8 de altura, de cuando el personaje medía menos. Con 4.5
         // unidades eso es a la altura de los tobillos y en vista en picado el
         // propio modelo lo tapaba. Ahora sale del pecho.
-        Vector3 origin = transform.position + Vector3.up * (DesiredCharacterHeight * 0.5f);
+        // El modelo puede crecer para la cámara sin subir el origen del VFX
+        // hasta la cara. De otro modo la esfera termina tapando al personaje.
+        Vector3 origin = transform.position + Vector3.up * Mathf.Min(4.5f, DesiredCharacterHeight * 0.32f);
         line.SetPosition(0, origin);
         line.SetPosition(1, origin + direction.normalized * feedbackRange);
+
+        CharacterPowerVfx.Play(transform.position, direction.normalized, ultimate,
+            prototypeCharacterIndex, feedbackRange);
 
         // 0.2 s eran 12 fotogramas: un parpadeo que se perdía.
         Destroy(feedback, 0.4f);
@@ -427,6 +474,19 @@ public class PlayerController : NetworkBehaviour
         return MatchOutcome.Undecided;
     }
 
+    private void UpdateMatchOutcome()
+    {
+        if (!CanControlPlayer()) return;
+        if (currentOutcome != MatchOutcome.Undecided) return;
+
+        currentOutcome = EvaluateOutcome();
+        if (currentOutcome == MatchOutcome.Undecided) return;
+
+        controlsEnabled = false;
+        if (Object != null)
+            OnlineMatchState.Set(OnlineMatchPhase.Finished, MatchResultText);
+    }
+
     private void ApplyPlayerColor()
     {
         EnsurePrototypeCharacterVisual();
@@ -486,7 +546,7 @@ public class PlayerController : NetworkBehaviour
         foreach (Collider visualCollider in instance.GetComponentsInChildren<Collider>(true))
             Destroy(visualCollider);
 
-        EnsureCharacterAnimator(instance, characterIndex);
+        prototypeAnimator = EnsureCharacterAnimator(instance, characterIndex);
         prototypeVisual = instance.transform;
         FitImportedCharacterToCollider(instance);
         return true;
@@ -497,7 +557,7 @@ public class PlayerController : NetworkBehaviour
     /// personaje aparece completamente inmóvil. El controller vive junto al
     /// prefab en Resources, así que se puede reconectar en runtime.
     /// </summary>
-    private static void EnsureCharacterAnimator(GameObject character, int characterIndex)
+    private static Animator EnsureCharacterAnimator(GameObject character, int characterIndex)
     {
         Animator animator = character.GetComponentInChildren<Animator>(true);
         if (animator == null)
@@ -505,10 +565,7 @@ public class PlayerController : NetworkBehaviour
 
         if (animator.runtimeAnimatorController == null)
         {
-            // Convención: el controller vive junto al prefab y con su mismo
-            // nombre. Si el prefab ya trae uno configurado, esto no se toca.
-            RuntimeAnimatorController controller =
-                Resources.Load<RuntimeAnimatorController>(CharacterCatalog.PathOf(characterIndex));
+            RuntimeAnimatorController controller = CharacterCatalog.LoadAnimatorController(characterIndex);
             if (controller != null)
                 animator.runtimeAnimatorController = controller;
             else
@@ -518,6 +575,26 @@ public class PlayerController : NetworkBehaviour
         animator.applyRootMotion = false;
         // Sin esto el personaje deja de animarse cuando la cámara no lo encuadra.
         animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+        return animator;
+    }
+
+    private void UpdateCharacterAnimation(bool moving)
+    {
+        if (prototypeAnimator != null && HasAnimatorParameter(prototypeAnimator, "isMoving"))
+            prototypeAnimator.SetBool("isMoving", moving);
+    }
+
+    private void TriggerCharacterAnimation(string parameter)
+    {
+        if (prototypeAnimator != null && HasAnimatorParameter(prototypeAnimator, parameter))
+            prototypeAnimator.SetTrigger(parameter);
+    }
+
+    private static bool HasAnimatorParameter(Animator animator, string parameter)
+    {
+        foreach (AnimatorControllerParameter candidate in animator.parameters)
+            if (candidate.name == parameter) return true;
+        return false;
     }
 
     private void FitImportedCharacterToCollider(GameObject character)
@@ -579,120 +656,6 @@ public class PlayerController : NetworkBehaviour
         return string.IsNullOrWhiteSpace(networkName) ? "Player" : networkName;
     }
 
-    private void DrawPlayerLabels(float scale, float width, GUIStyle label)
-    {
-        Camera cameraToUse = Camera.main;
-        if (cameraToUse == null) return;
-
-        bool teamMode = Object != null && MatchContext.TeamSize > 1;
-        Color neutralName = new Color(0.94f, 0.91f, 0.82f);
-
-        foreach (PlayerController player in FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
-        {
-            if (!player.gameObject.activeInHierarchy) continue;
-            // Keep the name and health bar above the enlarged 4.5-unit visual.
-            Vector3 screenPoint = cameraToUse.WorldToScreenPoint(player.transform.position + Vector3.up * 4.9f);
-            if (screenPoint.z <= 0f) continue;
-
-            float x = screenPoint.x / scale;
-            float y = (Screen.height - screenPoint.y) / scale;
-            float healthRatio = Mathf.Clamp01(player.CurrentHealth / (float)MaxHealth);
-
-            // En 2v2 y 3v3 hay varias barras en pantalla: el color del nombre
-            // dice de un vistazo quién es aliado y quién rival.
-            bool ally = IsAllyOf(player);
-            label.normal.textColor = player.Object == null ? neutralName : MatchTeams.ColorOf(player.Team);
-            string tag = teamMode && player != this ? (ally ? "  ▲" : "  ✕") : string.Empty;
-
-            GUI.Label(new Rect(x - 90f, y - 30f, 180f, 25f), player.GetDisplayName() + tag, label);
-            GUI.Box(new Rect(x - 65f, y, 130f, 14f), string.Empty);
-            Color previous = GUI.color;
-            GUI.color = healthRatio > 0.35f ? new Color(0.25f, 0.72f, 0.38f) : new Color(0.78f, 0.22f, 0.22f);
-            GUI.DrawTexture(new Rect(x - 62f, y + 3f, 124f * healthRatio, 8f), Texture2D.whiteTexture);
-            GUI.color = previous;
-        }
-
-        label.normal.textColor = neutralName;
-    }
-
-    private void OnGUI()
-    {
-        if (!CanControlPlayer()) return;
-
-        float scale = Mathf.Clamp(Screen.width / 960f, 0.8f, 1.6f);
-        GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
-        float width = Screen.width / scale;
-        GUIStyle playerLabel = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 20,
-            fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleCenter
-        };
-        playerLabel.normal.textColor = new Color(0.94f, 0.91f, 0.82f);
-
-        GUIStyle hudLabel = new GUIStyle(playerLabel)
-        {
-            fontSize = 18
-        };
-        hudLabel.normal.textColor = new Color(0.86f, 0.67f, 0.24f);
-
-        DrawPlayerLabels(scale, width, playerLabel);
-
-        if (GUI.Button(new Rect(18f, 18f, 150f, 46f), GameLocalization.Choose("Salir al menú", "Exit to menu")))
-        {
-            RequestExit();
-            return;
-        }
-
-        if (exitConfirmationVisible)
-        {
-            DrawExitConfirmation(width, hudLabel);
-            return;
-        }
-
-        GUI.Box(new Rect(width * 0.5f - 150f, 18f, 300f, 42f), $"{GameLocalization.Choose("VIDA", "HEALTH")}  {CurrentHealth} / {MaxHealth}");
-        if (Object != null)
-        {
-            GUIStyle teamLabel = new GUIStyle(hudLabel) { fontSize = 15 };
-            teamLabel.normal.textColor = MatchTeams.ColorOf(Team);
-            GUI.Label(new Rect(width * 0.5f - 150f, 0f, 300f, 20f),
-                $"{MatchContext.Mode.DisplayName} · {GameLocalization.Choose("Equipo", "Team")} {MatchTeams.NameOf(Team)}", teamLabel);
-        }
-        float basicCooldown = Mathf.Max(0f, basicReadyAt - Time.unscaledTime);
-        float ultimateCooldown = Mathf.Max(0f, ultimateReadyAt - Time.unscaledTime);
-        GUI.Box(new Rect(width * 0.5f - 255f, 62f, 510f, 34f), string.Empty);
-        GUI.Label(new Rect(width * 0.5f - 245f, 62f, 490f, 34f),
-            $"[Q] {GameLocalization.Choose("Ataque", "Attack")}: {(basicCooldown <= 0f ? GameLocalization.Choose("LISTO", "READY") : basicCooldown.ToString("0.0"))}    [E] {GameLocalization.Choose("Definitiva", "Ultimate")}: {(ultimateCooldown <= 0f ? GameLocalization.Choose("LISTA", "READY") : ultimateCooldown.ToString("0.0"))}",
-            hudLabel);
-        if (Object != null && !string.IsNullOrWhiteSpace(OnlineMatchState.Message))
-        {
-            GUIStyle statusLabel = new GUIStyle(hudLabel)
-            {
-                fontSize = 16,
-                wordWrap = true
-            };
-            GUI.Box(new Rect(width * 0.5f - 300f, 102f, 600f, 58f), string.Empty);
-            GUI.Label(new Rect(width * 0.5f - 290f, 104f, 580f, 54f), OnlineMatchState.Message, statusLabel);
-        }
-
-        MatchOutcome outcome = EvaluateOutcome();
-        string result = outcome == MatchOutcome.Victory
-            ? GameLocalization.Choose("VICTORIA", "VICTORY")
-            : outcome == MatchOutcome.Defeat ? GameLocalization.Choose("DERROTA", "DEFEAT") : string.Empty;
-        if (!string.IsNullOrEmpty(result))
-        {
-            controlsEnabled = false;
-            if (Object != null)
-                OnlineMatchState.Set(OnlineMatchPhase.Finished, result);
-            GUI.Box(new Rect(width * 0.5f - 180f, 125f, 360f, 90f), string.Empty);
-            GUI.Label(new Rect(width * 0.5f - 180f, 135f, 360f, 60f), result, hudLabel);
-            if (GUI.Button(new Rect(width * 0.5f - 195f, 220f, 185f, 48f), GameLocalization.Choose("Jugar otra vez", "Play again")))
-                ReturnToMultiplayerLobby();
-            if (GUI.Button(new Rect(width * 0.5f + 10f, 220f, 185f, 48f), GameLocalization.Choose("Salir al menú", "Exit to menu")))
-                ReturnToMainMenu();
-        }
-    }
-
     private bool CanControlPlayer()
     {
         return Object == null || HasStateAuthority;
@@ -707,7 +670,7 @@ public class PlayerController : NetworkBehaviour
         return Object != null && OnlineMatchState.CanPlay && !IsDefeated;
     }
 
-    private void RequestExit()
+    public void RequestExit()
     {
         if (NeedsExitConfirmation())
             exitConfirmationVisible = true;
@@ -715,34 +678,23 @@ public class PlayerController : NetworkBehaviour
             ReturnToMainMenu();
     }
 
-    private void DrawExitConfirmation(float width, GUIStyle hudLabel)
+    public string ExitWarningText => MatchContext.TeamSize > 1
+        ? GameLocalization.Choose(
+            $"Tu equipo se quedará con {MatchContext.TeamSize - 1} de {MatchContext.TeamSize} jugadores.",
+            $"Your team will be left with {MatchContext.TeamSize - 1} of {MatchContext.TeamSize} players.")
+        : GameLocalization.Choose("Se dará el duelo por perdido.", "The duel will count as a loss.");
+
+    public void CancelExit() => exitConfirmationVisible = false;
+
+    public void ConfirmExit()
     {
-        GUIStyle body = new GUIStyle(hudLabel)
-        {
-            fontSize = 15,
-            wordWrap = true
-        };
-        body.normal.textColor = new Color(0.92f, 0.89f, 0.80f);
-
-        GUI.Box(new Rect(width * 0.5f - 235f, 150f, 470f, 158f), string.Empty);
-        GUI.Label(new Rect(width * 0.5f - 225f, 162f, 450f, 30f), GameLocalization.Choose("¿Abandonar la partida?", "Leave the match?"), hudLabel);
-
-        string warning = MatchContext.TeamSize > 1
-            ? GameLocalization.Choose($"Tu equipo se quedará con {MatchContext.TeamSize - 1} de {MatchContext.TeamSize} jugadores.", $"Your team will be left with {MatchContext.TeamSize - 1} of {MatchContext.TeamSize} players.")
-            : GameLocalization.Choose("Se dará el duelo por perdido.", "The duel will count as a loss.");
-        GUI.Label(new Rect(width * 0.5f - 215f, 194f, 430f, 46f), warning, body);
-
-        if (GUI.Button(new Rect(width * 0.5f - 215f, 248f, 205f, 44f), GameLocalization.Choose("Seguir jugando", "Keep playing")))
-            exitConfirmationVisible = false;
-
-        // Vuelve al menú multijugador, no al principal: ahí se cambia de
-        // personaje y de modo sin pasos intermedios.
-        if (GUI.Button(new Rect(width * 0.5f + 10f, 248f, 205f, 44f), GameLocalization.Choose("Abandonar", "Leave")))
-        {
-            exitConfirmationVisible = false;
-            ReturnToMultiplayerLobby();
-        }
+        exitConfirmationVisible = false;
+        ReturnToMultiplayerLobby();
     }
+
+    public void PlayAgain() => ReturnToMultiplayerLobby();
+
+    public void ExitToMenu() => ReturnToMainMenu();
 
     private async void ReturnToMainMenu()
     {
@@ -750,7 +702,8 @@ public class PlayerController : NetworkBehaviour
         await ShutdownNetwork();
 
         PlayModeContext.UseLocalStory();
-        SceneManager.LoadScene("Main Menu");
+        BlightedIntroFlow.ReturnDirectlyToMenu = true;
+        SceneManager.LoadScene(GameScenes.Intro);
     }
 
     private async void ReturnToMultiplayerLobby()
@@ -759,7 +712,8 @@ public class PlayerController : NetworkBehaviour
         await ShutdownNetwork();
 
         OnlineMatchState.Reset();
-        SceneManager.LoadScene("MultiplayerMenu");
+        BlightedIntroFlow.ReturnDirectlyToMenu = true;
+        SceneManager.LoadScene(GameScenes.Intro);
     }
 
     /// <summary>

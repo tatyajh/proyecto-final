@@ -59,6 +59,60 @@ namespace Gameplay.Combat
                     else basicAimIndicator = candidate;
                 }
             }
+
+            if (basicAimIndicator == null || !basicAimIndicator.IsConfigured)
+                basicAimIndicator = CreateRuntimeAimIndicator("Basic Aim Indicator", new Color(0.83f, 0.64f, 0.20f, 0.9f));
+            if (ultimateAimIndicator == null || !ultimateAimIndicator.IsConfigured)
+                ultimateAimIndicator = CreateRuntimeAimIndicator("Ultimate Aim Indicator", new Color(0.62f, 0.22f, 0.48f, 0.92f));
+        }
+
+        private SkillAimIndicator CreateRuntimeAimIndicator(string indicatorName, Color color)
+        {
+            GameObject root = new GameObject(indicatorName);
+            root.transform.SetParent(transform, false);
+
+            GameObject range = new GameObject("Range");
+            range.transform.SetParent(root.transform, false);
+            LineRenderer rangeLine = range.AddComponent<LineRenderer>();
+            ConfigureLine(rangeLine, color, true);
+
+            GameObject direction = new GameObject("Direction");
+            direction.transform.SetParent(root.transform, false);
+            LineRenderer directionLine = direction.AddComponent<LineRenderer>();
+            ConfigureLine(directionLine, color, false);
+
+            SkillAimIndicator indicator = root.AddComponent<SkillAimIndicator>();
+            indicator.Configure(range, direction);
+            return indicator;
+        }
+
+        private static void ConfigureLine(LineRenderer line, Color color, bool circle)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default");
+            line.sharedMaterial = new Material(shader) { color = color };
+            line.startColor = color;
+            line.endColor = color;
+            line.widthMultiplier = circle ? 0.08f : 0.13f;
+            line.useWorldSpace = false;
+            line.loop = circle;
+            line.numCornerVertices = 3;
+            line.numCapVertices = 3;
+
+            if (!circle)
+            {
+                line.positionCount = 2;
+                line.SetPosition(0, Vector3.zero);
+                line.SetPosition(1, Vector3.forward);
+                return;
+            }
+
+            const int segments = 64;
+            line.positionCount = segments;
+            for (int i = 0; i < segments; i++)
+            {
+                float angle = i * Mathf.PI * 2f / segments;
+                line.SetPosition(i, new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)));
+            }
         }
 
         private void OnEnable()

@@ -242,7 +242,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1e3fdca004f2d45fe8abbed571a8abd5, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshModifier
   m_SerializedVersion: 0
   m_OverrideArea: 1
@@ -268,12 +268,12 @@ GameObject:
   - component: {fileID: 140860597}
   - component: {fileID: 140860599}
   m_Layer: 0
-  m_Name: Player
+  m_Name: Legacy Player Rig (Disabled)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!136 &140860593
 CapsuleCollider:
   m_ObjectHideFlags: 0
@@ -1372,8 +1372,9 @@ GameObject:
   m_Component:
   - component: {fileID: 1036657765}
   - component: {fileID: 1036657764}
+  - component: {fileID: 1036657766}
   m_Layer: 0
-  m_Name: Spawner
+  m_Name: Combat Training
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1388,12 +1389,32 @@ MonoBehaviour:
   m_GameObject: {fileID: 1036657763}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: de9724366b6cd4e4b83f2aa41ef0dd40, type: 3}
+  m_Script: {fileID: 11500000, guid: ca46a1d183121ad4396051b08bb746a1, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PlayerSpawner
-  playerPrefab:
-    RawGuidValue: d382de709db6d4a1bb3a30a957c7d19c
-  spawnPosition: {x: 48, y: 0, z: -6}
+  m_EditorClassIdentifier: Assembly-CSharp::CharacterSpawner
+  characterPrefabs: []
+  spawnPoint: {fileID: 1036657765}
+  focusCameraOnSpawn: 1
+--- !u!114 &1036657766
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1036657763}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b7b4c0236da74c26a07ccbda0406e250, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CombatTrainingBootstrap
+  characterSpawner: {fileID: 1036657764}
+  spawnCharacterOnStart: 1
+  useSavedCharacter: 1
+  initialCharacterIndex: 3
+  enableDeveloperCharacterSwitch: 1
+  targetHealth: 60
+  targetScale: {x: 2.2, y: 3.5, z: 2.2}
+  targetColor: {r: 0.28, g: 0.1, b: 0.22, a: 1}
 --- !u!4 &1036657765
 Transform:
   m_ObjectHideFlags: 0
@@ -1403,7 +1424,7 @@ Transform:
   m_GameObject: {fileID: 1036657763}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -2.27157, y: -0, z: 4.73555}
+  m_LocalPosition: {x: 50, y: 0, z: -20}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1817,7 +1838,7 @@ MonoBehaviour:
   target: {fileID: 140860596}
   pitch: 32.6
   yaw: -51
-  distance: 45.3
+  distance: 50
   targetOffset: {x: 0, y: 1.2, z: 0}
   smoothFollow: 1
   followSpeed: 5

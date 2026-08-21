@@ -242,7 +242,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1e3fdca004f2d45fe8abbed571a8abd5, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshModifier
   m_SerializedVersion: 0
   m_OverrideArea: 1
@@ -267,6 +267,7 @@ GameObject:
   - component: {fileID: 140860598}
   - component: {fileID: 140860597}
   - component: {fileID: 140860599}
+  - component: {fileID: 140860600}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -441,6 +442,26 @@ MonoBehaviour:
   ultimateAimIndicator: {fileID: 718271326}
   attackRange: 5
   ultimateRange: 8
+--- !u!114 &140860600
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 140860592}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkObject
+  SortKey: 653363847
+  SendPriority: 1
+  EnableInterpolation: 1
+  Flags: 262146
+  NestedObjects: []
+  NetworkedBehaviours:
+  - {fileID: 140860598}
+  ForceRemoteRenderTimeframe: 0
 --- !u!1 &150929678
 GameObject:
   m_ObjectHideFlags: 0
@@ -1433,10 +1454,7 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 1197873453402151825, guid: ee03f61c633fa8849a79100609d9bbe4, type: 3}
       insertIndex: -1
       addedObject: {fileID: 881996606}
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 2022762007937221192, guid: ee03f61c633fa8849a79100609d9bbe4, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 1809747860}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: ee03f61c633fa8849a79100609d9bbe4, type: 3}
 --- !u!1 &1371454525
 GameObject:
@@ -1767,8 +1785,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1486059107}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.2533256, y: -0.41320682, z: 0.12083012, w: 0.8663061}
-  m_LocalPosition: {x: 57.201794, y: 8.126477, z: -25.831898}
+  m_LocalRotation: {x: 0.39566734, y: -0.3869408, z: 0.18872364, w: 0.8112383}
+  m_LocalPosition: {x: 64.35377, y: 33.64032, z: -31.623451}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1787,13 +1805,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MobaCamera
   target: {fileID: 140860596}
-  pitch: 32.6
+  pitch: 52
   yaw: -51
-  distance: 11
-  targetOffset: {x: 0, y: 2.2, z: 0}
+  distance: 50
+  targetOffset: {x: 0, y: 10, z: 0}
   smoothFollow: 1
   followSpeed: 5
-  avoidObstacles: 1
+  avoidObstacles: 0
   collisionRadius: 0.55
   collisionPadding: 0.35
   minimumDistance: 3
@@ -2033,20 +2051,6 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 1197873453402151825, guid: ee03f61c633fa8849a79100609d9bbe4, type: 3}
   m_PrefabInstance: {fileID: 1186367010}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &1809747860
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1809747856}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 68e41a6b9f8da9248ac572da2abd7585, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::FluidScroll
-  scrollSpeedX: 0.01
-  scrollSpeedY: 0.02
 --- !u!1 &1854892204
 GameObject:
   m_ObjectHideFlags: 0

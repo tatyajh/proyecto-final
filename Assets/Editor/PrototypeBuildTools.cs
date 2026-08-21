@@ -11,7 +11,7 @@ using UnityEngine.SceneManagement;
 
 public static class PrototypeBuildTools
 {
-    private const string FirstScene = "Assets/Scenes/Menus/Type Ypur Name.unity";
+    private const string FirstScene = "Assets/Scenes/Menus/Blighted Intro.unity";
     private const string BuildFolderName = "ProyectoFinal-WebGL";
     private const string ZipName = "ProyectoFinal-WebGL-ITCH.zip";
 

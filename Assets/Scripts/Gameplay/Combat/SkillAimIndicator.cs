@@ -11,6 +11,16 @@ namespace Gameplay.Combat
         [Header("Floor Alignment")]
         [SerializeField] private float floorOffset = -1f; 
 
+        public bool IsConfigured => rangeIndicator != null || directionIndicator != null;
+
+        public void Configure(GameObject range, GameObject direction, float offset = 0.08f)
+        {
+            rangeIndicator = range;
+            directionIndicator = direction;
+            floorOffset = offset;
+            HideIndicators();
+        }
+
         private void Awake()
         {
             HideIndicators();
@@ -21,12 +31,16 @@ namespace Gameplay.Combat
             if (rangeIndicator) 
             {
                 rangeIndicator.SetActive(true);
-                rangeIndicator.transform.localScale = new Vector3(range * 2f, range * 2f, 1f);
+                rangeIndicator.transform.localScale = rangeIndicator.GetComponent<LineRenderer>() != null
+                    ? Vector3.one * range
+                    : new Vector3(range * 2f, range * 2f, 1f);
             }
 
             if (directionIndicator) 
             {
                 directionIndicator.SetActive(true);
+                if (directionIndicator.GetComponent<LineRenderer>() != null)
+                    directionIndicator.transform.localScale = new Vector3(1f, 1f, range);
             }
         }
 
