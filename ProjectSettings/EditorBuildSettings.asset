@@ -35,5 +35,8 @@ EditorBuildSettings:
   - enabled: 0
     path: Assets/Scenes/Story Levels/Level 4.unity
     guid: 18c6f73e7082a4dbf9cdc71b294939aa
+  - enabled: 0
+    path: Assets/Scenes/Testing/Character tests.unity
+    guid: 25c9f7a0ebe0945138a3436a4f3b1c8e
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0
