@@ -40,15 +40,29 @@ public sealed class MultiplayerMenuController : MonoBehaviour, IPointerDownHandl
 
     private static CharacterInfo[] BuildCharacterRoster()
     {
-        return new[]
+        string[] subtitles =
         {
-            new CharacterInfo("Heliandra", GameLocalization.Choose("Girasol Ardiente", "Burning Sunflower"), false, new Color(0.78f, 0.35f, 0.20f)),
-            new CharacterInfo("Lunara", GameLocalization.Choose("Flor de Murciélago", "Bat Flower"), false, new Color(0.34f, 0.48f, 0.76f)),
-            new CharacterInfo("Solmara", GameLocalization.Choose("Corona del Alba", "Crown of Dawn"), false, new Color(0.83f, 0.66f, 0.20f)),
-            new CharacterInfo("Quietmor", GameLocalization.Choose("La Campana sin Voz · Control", "The Voiceless Bell · Control"), true, new Color(0.34f, 0.25f, 0.48f)),
-            new CharacterInfo("Acatheria", GameLocalization.Choose("Reina de las Espinas", "Queen of Thorns"), false, new Color(0.30f, 0.64f, 0.45f)),
-            new CharacterInfo("Terramor", GameLocalization.Choose("Raíz Profunda", "Deep Root"), false, new Color(0.43f, 0.30f, 0.20f))
+            GameLocalization.Choose("Girasol Ardiente", "Burning Sunflower"),
+            GameLocalization.Choose("Flor de Murciélago", "Bat Flower"),
+            GameLocalization.Choose("Corona del Alba", "Crown of Dawn"),
+            GameLocalization.Choose("La Campana sin Voz · Control", "The Voiceless Bell · Control"),
+            GameLocalization.Choose("Reina de las Espinas", "Queen of Thorns"),
+            GameLocalization.Choose("Raíz Profunda", "Deep Root")
         };
+
+        CharacterInfo[] roster = new CharacterInfo[CharacterCatalog.Count];
+        for (int i = 0; i < roster.Length; i++)
+        {
+            // "Tiene modelo" se comprueba contra Resources, no se escribe a mano:
+            // en cuanto el prefab del personaje exista, el menú lo refleja solo.
+            roster[i] = new CharacterInfo(
+                CharacterCatalog.NameOf(i),
+                subtitles[i],
+                CharacterCatalog.HasModel(i),
+                CharacterCatalog.TintOf(i));
+        }
+
+        return roster;
     }
 
     // Paleta única del juego. Antes eran valores a ojo que no coincidían con
@@ -445,7 +459,7 @@ public sealed class MultiplayerMenuController : MonoBehaviour, IPointerDownHandl
     {
         if (previewModel != null) Destroy(previewModel);
 
-        GameObject prefab = info.HasModel ? Resources.Load<GameObject>("Characters/CampanaPrototype") : null;
+        GameObject prefab = CharacterCatalog.LoadModel(characterIndex);
         previewModel = prefab != null ? Instantiate(prefab, previewRoot) : CreateProvisionalCapsule(info.Tint);
 
         foreach (Collider collider in previewModel.GetComponentsInChildren<Collider>(true))

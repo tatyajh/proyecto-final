@@ -448,10 +448,10 @@ public class PlayerController : NetworkBehaviour
         Color primary = CharacterColors[characterIndex];
         Color secondary = Color.Lerp(primary, new Color(0.82f, 0.78f, 0.66f), 0.45f);
 
-        // Por ahora solo existe un modelo de personaje real en el repositorio.
-        // Se utiliza para Quietmor y se conserva la silueta provisional para
-        // las demás selecciones hasta que arte entregue sus respectivos FBX.
-        if (characterIndex == 3 && TryCreateImportedCharacterVisual())
+        // Cualquier personaje que ya tenga su prefab en Resources/Characters se
+        // usa tal cual; el resto conserva la silueta provisional. Así integrar
+        // un personaje nuevo es dejar su prefab en la carpeta, sin tocar código.
+        if (TryCreateImportedCharacterVisual(characterIndex))
             return;
 
         prototypeVisual = new GameObject($"Prototype {CharacterNames[characterIndex]}").transform;
@@ -474,19 +474,19 @@ public class PlayerController : NetworkBehaviour
             CreateVisualPart("Crown", PrimitiveType.Cylinder, new Vector3(0f, 1.18f, 0f), new Vector3(0.28f, 0.10f, 0.28f), secondary);
     }
 
-    private bool TryCreateImportedCharacterVisual()
+    private bool TryCreateImportedCharacterVisual(int characterIndex)
     {
-        GameObject characterPrefab = Resources.Load<GameObject>("Characters/CampanaPrototype");
+        GameObject characterPrefab = CharacterCatalog.LoadModel(characterIndex);
         if (characterPrefab == null) return false;
 
         GameObject instance = Instantiate(characterPrefab, transform);
-        instance.name = "Prototype Quietmor";
+        instance.name = $"Model {CharacterCatalog.NameOf(characterIndex)}";
         instance.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
 
         foreach (Collider visualCollider in instance.GetComponentsInChildren<Collider>(true))
             Destroy(visualCollider);
 
-        EnsureCharacterAnimator(instance);
+        EnsureCharacterAnimator(instance, characterIndex);
         prototypeVisual = instance.transform;
         FitImportedCharacterToCollider(instance);
         return true;
@@ -497,7 +497,7 @@ public class PlayerController : NetworkBehaviour
     /// personaje aparece completamente inmóvil. El controller vive junto al
     /// prefab en Resources, así que se puede reconectar en runtime.
     /// </summary>
-    private static void EnsureCharacterAnimator(GameObject character)
+    private static void EnsureCharacterAnimator(GameObject character, int characterIndex)
     {
         Animator animator = character.GetComponentInChildren<Animator>(true);
         if (animator == null)
@@ -505,12 +505,14 @@ public class PlayerController : NetworkBehaviour
 
         if (animator.runtimeAnimatorController == null)
         {
+            // Convención: el controller vive junto al prefab y con su mismo
+            // nombre. Si el prefab ya trae uno configurado, esto no se toca.
             RuntimeAnimatorController controller =
-                Resources.Load<RuntimeAnimatorController>("Characters/CampanaPrototype");
+                Resources.Load<RuntimeAnimatorController>(CharacterCatalog.PathOf(characterIndex));
             if (controller != null)
                 animator.runtimeAnimatorController = controller;
             else
-                Debug.LogWarning("[PlayerController] No se encontró el Animator Controller del personaje.");
+                Debug.LogWarning($"[PlayerController] '{CharacterCatalog.NameOf(characterIndex)}' no tiene Animator Controller: se verá inmóvil.");
         }
 
         animator.applyRootMotion = false;
