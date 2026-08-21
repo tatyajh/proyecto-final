@@ -97,7 +97,12 @@ public static class PrototypeBuildTools
         }
         finally
         {
-            EditorSceneManager.RestoreSceneManagerSetup(previousSetup);
+            // En batchmode Unity arranca sin una escena de Editor cargada y
+            // devuelve un setup vacío. RestoreSceneManagerSetup exige al menos
+            // una escena activa, así que solo se restaura cuando realmente
+            // existía una sesión visual previa.
+            if (previousSetup != null && previousSetup.Any(item => item.isLoaded))
+                EditorSceneManager.RestoreSceneManagerSetup(previousSetup);
         }
 
         foreach (string error in errors) Debug.LogError("[Preflight] " + error);
