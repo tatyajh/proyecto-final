@@ -9,11 +9,10 @@ public class ControladorRayo : MonoBehaviour
 
     [Header("Configuración de Impacto")]
     public float duracionTotal = 0.25f;
-    public float radioMaximo = 2.0f; // Tamaño del estallido
-    public float radioFinal = 0.5f;   // Tamaño al encogerse
+    public float radioInicial = 0.1f; // Tamaño pequeño y concentrado al iniciar
+    public float radioMaximo = 2.5f;  // Tamaño máximo al finalizar la expansión
 
     [Header("Curva de Expansión")]
-    // Nos permite controlar visualmente cómo se escala en el tiempo
     public AnimationCurve curvaEscala = AnimationCurve.EaseInOut(0, 0, 1, 1);
 
     private Vector3 escalaInicialCilindro;
@@ -52,18 +51,18 @@ public class ControladorRayo : MonoBehaviour
             tiempo += Time.deltaTime;
             float progreso = tiempo / duracionTotal; // De 0 a 1
 
-            // Evaluamos el punto actual de la curva
+            // Evaluamos la curva (0 al inicio, 1 al final)
             float factorCurva = curvaEscala.Evaluate(progreso);
 
-            // Calculamos el radio actual (X y Z) manteniendo la altura constante (Y)
-            float radioActual = Mathf.Lerp(radioMaximo, radioFinal, factorCurva);
+            // Interpolamos de menor a mayor: radioInicial (0) -> radioMaximo (1)
+            float radioActual = Mathf.Lerp(radioInicial, radioMaximo, factorCurva);
 
             if (cilindroRayo != null)
             {
                 cilindroRayo.localScale = new Vector3(radioActual, escalaInicialCilindro.y, radioActual);
             }
 
-            yield return null; // Espera al siguiente frame
+            yield return null;
         }
 
         objetoRayo.SetActive(false);
