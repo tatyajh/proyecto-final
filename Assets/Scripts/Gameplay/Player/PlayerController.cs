@@ -406,7 +406,7 @@ public class PlayerController : NetworkBehaviour
         line.SetPosition(0, origin);
         line.SetPosition(1, origin + direction.normalized * feedbackRange);
 
-        CharacterPowerVfx.Play(transform.position, direction.normalized, ultimate,
+        CharacterPowerVfx.Play(gameObject, transform.position, direction.normalized, ultimate,
             prototypeCharacterIndex, feedbackRange);
 
         // 0.2 s eran 12 fotogramas: un parpadeo que se perdía.

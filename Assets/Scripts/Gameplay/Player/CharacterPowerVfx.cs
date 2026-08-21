@@ -13,6 +13,7 @@ public sealed class CharacterPowerVfx : MonoBehaviour
     private const string RayPrefabPath = "Vfx/Powers/VisualRayAttack";
 
     public static void Play(
+        GameObject actor,
         Vector3 origin,
         Vector3 direction,
         bool ultimate,
@@ -29,16 +30,20 @@ public sealed class CharacterPowerVfx : MonoBehaviour
         GameObject host = new GameObject(ultimate ? "Ultimate Power VFX" : "Basic Power VFX");
         host.transform.position = origin + normalizedDirection * Mathf.Max(1f, range);
         CharacterPowerVfx effect = host.AddComponent<CharacterPowerVfx>();
-        effect.StartCoroutine(effect.Run(ultimate, characterIndex));
+        effect.StartCoroutine(effect.Run(actor, ultimate, characterIndex));
     }
 
-    private IEnumerator Run(bool ultimate, int characterIndex)
+    private IEnumerator Run(GameObject actor, bool ultimate, int characterIndex)
     {
         string characterName = CharacterCatalog.NameOf(characterIndex);
         if (ultimate && characterName == QuietmorName)
             yield return PlayRayStrike();
         else if (characterName == AcatheriaName)
+        {
+            if (ultimate)
+                CharacterAuraVfx.Play(actor, new Color(1f, 0.12f, 0.30f, 1f), 2f);
             yield return PlayPoisonZone(ultimate);
+        }
         else
             yield return PlayAreaExplosion(ultimate, characterIndex);
 
