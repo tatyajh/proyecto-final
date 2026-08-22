@@ -14,9 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   characterName: Acatheria
   prefabPath: Characters/Acatheria
-  portraitPath: ''
+  portraitPath: 
   animatorControllerPath: Characters/Acatheria
   sortOrder: 4
-  tint: {r: 0.30, g: 0.64, b: 0.45, a: 1}
-  previewScale: 1
+  tint: {r: 0.3, g: 0.64, b: 0.45, a: 1}
+  previewScale: 2.3
   previewYaw: 180

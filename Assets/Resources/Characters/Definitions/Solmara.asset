@@ -14,9 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   characterName: Solmara
   prefabPath: Characters/Solmara
-  portraitPath: ''
+  portraitPath: 
   animatorControllerPath: Characters/Solmara
   sortOrder: 2
-  tint: {r: 0.83, g: 0.66, b: 0.20, a: 1}
-  previewScale: 1
+  tint: {r: 0.83, g: 0.66, b: 0.2, a: 1}
+  previewScale: 2.5
   previewYaw: 180

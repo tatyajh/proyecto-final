@@ -242,7 +242,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1e3fdca004f2d45fe8abbed571a8abd5, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshModifier
   m_SerializedVersion: 0
   m_OverrideArea: 1
@@ -1404,6 +1404,22 @@ PrefabInstance:
       propertyPath: m_LocalScale.z
       value: 0.007
       objectReference: {fileID: 0}
+    - target: {fileID: 1503144546499455811, guid: ee03f61c633fa8849a79100609d9bbe4, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1503144546499455811, guid: ee03f61c633fa8849a79100609d9bbe4, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1503144546499455811, guid: ee03f61c633fa8849a79100609d9bbe4, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0.031017
+      objectReference: {fileID: 0}
+    - target: {fileID: 1503144546499455811, guid: ee03f61c633fa8849a79100609d9bbe4, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: -0.39575
+      objectReference: {fileID: 0}
     - target: {fileID: 3593241848901761296, guid: ee03f61c633fa8849a79100609d9bbe4, type: 3}
       propertyPath: m_LocalPosition.x
       value: 64.05672
@@ -1448,6 +1464,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Santuario2
       objectReference: {fileID: 0}
+    - target: {fileID: 6811416378397234015, guid: ee03f61c633fa8849a79100609d9bbe4, type: 3}
+      propertyPath: m_NavMeshData
+      value: 
+      objectReference: {fileID: 23800000, guid: c01d70c2084c5a048b445c256d46c89f, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects:
@@ -1786,7 +1806,7 @@ Transform:
   m_GameObject: {fileID: 1486059107}
   serializedVersion: 2
   m_LocalRotation: {x: 0.39566734, y: -0.3869408, z: 0.18872364, w: 0.8112383}
-  m_LocalPosition: {x: 64.35377, y: 33.64032, z: -31.623451}
+  m_LocalPosition: {x: 73.92294, y: 49.400536, z: -39.372417}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2041,11 +2061,6 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1642624816}
   m_Mesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
---- !u!1 &1809747856 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 2022762007937221192, guid: ee03f61c633fa8849a79100609d9bbe4, type: 3}
-  m_PrefabInstance: {fileID: 1186367010}
-  m_PrefabAsset: {fileID: 0}
 --- !u!4 &1809747857 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1197873453402151825, guid: ee03f61c633fa8849a79100609d9bbe4, type: 3}

@@ -14,9 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   characterName: Quietmor
   prefabPath: Characters/CampanaPrototype
-  portraitPath: ''
+  portraitPath: 
   animatorControllerPath: Characters/CampanaPrototype
   sortOrder: 3
   tint: {r: 0.34, g: 0.25, b: 0.48, a: 1}
-  previewScale: 1
+  previewScale: 2.7
   previewYaw: 180
