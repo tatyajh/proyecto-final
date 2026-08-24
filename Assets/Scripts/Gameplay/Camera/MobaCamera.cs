@@ -13,8 +13,8 @@ public class MobaCamera : MonoBehaviour
     [SerializeField] private float yaw = -35f;   // Giro en diagonal para ver la grieta como en LoL
 
     [Header("Distancia y Posición")]
-    [SerializeField] private float distance = 18f; // Lejanía perfecta (estilo Wild Rift/PC)
-    [SerializeField] private Vector3 targetOffset = new Vector3(0, 1.2f, 0); // Altura del centro del jugador
+    [SerializeField] private float distance = 20f;
+    [SerializeField] private Vector3 targetOffset = new Vector3(0, 7f, 0); // Centro visual del personaje ampliado
 
     [Header("Suavizado de Seguimiento")]
     [SerializeField] private bool smoothFollow = true;

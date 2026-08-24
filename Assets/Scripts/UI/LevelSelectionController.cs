@@ -122,7 +122,7 @@ public class LevelSelectionController : MonoBehaviour
 
     public void BackToMenu()
     {
-        SceneManager.LoadScene("Main Menu");
+        SceneManager.LoadScene(GameScenes.Intro);
     }
 
     void SelectMaxUnlockedLevel()

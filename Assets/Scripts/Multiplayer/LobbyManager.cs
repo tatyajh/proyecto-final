@@ -5,45 +5,21 @@ using UnityEngine.SceneManagement;
 using UnityEngine.Serialization;
 
 /// <summary>
-/// Owns matchmaking only. MultiplayerMenuController owns presentation and input.
-/// Legacy public methods remain so serialized scene events do not break.
+/// Owns matchmaking only. Presentation lives in BlightedIntroFlow, which calls
+/// ConnectToMode directly.
 /// </summary>
 public class LobbyManager : MonoBehaviour
 {
-    private const int QuietmorCharacterIndex = 3;
-
-    [Header("Legacy UI (hidden by the new menu)")]
-    [SerializeField] private GameObject modeSelectionPopup;
-    [SerializeField] private GameObject conectionFailedMessage;
-
     [Header("Network")]
     [FormerlySerializedAs("_networkLauncher")]
     [SerializeField] private NetworkLauncher networkLauncher;
 
-    [Header("Scenes")]
-    [SerializeField] private int sceneIndex1v1 = 3;
-    [SerializeField] private int sceneIndex2v2 = 3;
-    [SerializeField] private int sceneIndex3v3 = 3;
-
-    public static string LocalPlayerName { get; private set; }
     public bool IsConnecting { get; private set; }
-
-    private MultiplayerMenuController menuController;
 
     private void Start()
     {
-        LocalPlayerName = PlayerPrefs.GetString("PlayerName", "Jugador");
-        HideLegacyUi();
-
         ResolveNetworkLauncher();
-
-        menuController = FindFirstObjectByType<MultiplayerMenuController>();
-        if (menuController == null)
-            menuController = gameObject.AddComponent<MultiplayerMenuController>();
-        menuController.Initialize(this);
     }
-
-    public Task<bool> ConnectOneVersusOne() => ConnectToMode(MatchModeCatalog.Duel);
 
     /// <summary>
     /// Único punto de entrada del matchmaking. El formato (1v1, 2v2, 3v3) decide
@@ -67,9 +43,21 @@ public class LobbyManager : MonoBehaviour
         if (matchMode == null)
             matchMode = MatchModeCatalog.Default;
 
-        // El personaje ya lo guardó MultiplayerMenuController al confirmarlo.
-        // La arena lee esto para saber cuántos jugadores esperar y cómo formar equipos.
+        // El flujo unificado ya guardó el personaje. La arena lee este contexto
+        // para saber cuántos jugadores esperar y cómo formar equipos.
         MatchContext.Select(matchMode);
+
+        int arenaSceneIndex = SceneUtility.GetBuildIndexByScenePath(GameScenes.ArenaPath);
+        if (arenaSceneIndex < 0)
+        {
+            string reason = GameLocalization.Choose(
+                "La arena no está configurada en Build Settings.",
+                "The arena is not configured in Build Settings.");
+            NetworkLauncher.ReportConfigurationFailure(reason);
+            OnlineMatchState.Set(OnlineMatchPhase.ConnectionFailed, reason);
+            Debug.LogError($"[LobbyManager] {reason} Ruta esperada: {GameScenes.ArenaPath}");
+            return false;
+        }
 
         IsConnecting = true;
         PlayModeContext.UseMultiplayer();
@@ -80,7 +68,7 @@ public class LobbyManager : MonoBehaviour
         bool success = await networkLauncher.StartGame(
             GameMode.Shared,
             matchMode,
-            GetSceneIndexForMode(matchMode));
+            arenaSceneIndex);
 
         if (!success)
         {
@@ -90,66 +78,6 @@ public class LobbyManager : MonoBehaviour
 
         IsConnecting = false;
         return success;
-    }
-
-    private const string ArenaScenePath = "Assets/Scenes/Multiplayer/OnlineArena.unity";
-
-    private int GetSceneIndexForMode(MatchModeDefinition matchMode)
-    {
-        int configured;
-        switch (matchMode.Id)
-        {
-            case MatchModeId.Duo2v2: configured = sceneIndex2v2; break;
-            case MatchModeId.Clash3v3: configured = sceneIndex3v3; break;
-            default: configured = sceneIndex1v1; break;
-        }
-
-        // El número serializado apunta a la arena por posición en Build
-        // Settings. Basta insertar una escena antes (por ejemplo, la de idioma)
-        // para que apunte a otra cosa. Resolverlo por ruta lo hace inmune.
-        int resolved = SceneUtility.GetBuildIndexByScenePath(ArenaScenePath);
-        if (resolved >= 0)
-        {
-            if (resolved != configured)
-                Debug.Log($"[LobbyManager] La arena está en el índice {resolved}, no en {configured}. Se usa el real.");
-            return resolved;
-        }
-
-        Debug.LogWarning($"[LobbyManager] '{ArenaScenePath}' no está en Build Settings. Se usa el índice {configured}.");
-        return configured;
-    }
-
-    public async Task CancelConnection()
-    {
-        if (networkLauncher != null)
-            await networkLauncher.CancelCurrentGame();
-        IsConnecting = false;
-        OnlineMatchState.Reset();
-        PlayModeContext.UseLocalStory();
-    }
-
-    public void ReturnToMainMenu()
-    {
-        OnlineMatchState.Reset();
-        SceneManager.LoadScene("Main Menu");
-    }
-
-    // Compatibility with Button events already serialized in MultiplayerMenu.unity.
-    public void OnClickOpenModeSelection() => menuController?.ShowModeSelection();
-
-    public async void OnClickSelectModeAndConnect(string modeName)
-    {
-        await ConnectToMode(MatchModeCatalog.GetByKey(modeName));
-    }
-
-    public void HidPopup() => HideLegacyUi();
-
-    private void HideLegacyUi()
-    {
-        if (modeSelectionPopup != null)
-            modeSelectionPopup.SetActive(false);
-        if (conectionFailedMessage != null)
-            conectionFailedMessage.SetActive(false);
     }
 
     private void ResolveNetworkLauncher()

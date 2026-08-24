@@ -6,21 +6,12 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/Menus/Type Ypur Name.unity
-    guid: fb3f05bb7a2cd44dc9561383094eebb6
-  - enabled: 1
-    path: Assets/Scenes/Menus/Main Menu.unity
-    guid: c417fcf87e17648109f862dc7fb49367
-  - enabled: 1
-    path: Assets/Scenes/Menus/Main Settings.unity
-    guid: 457257ddaf6e34b1eba3b4b52e4b065d
+    path: Assets/Scenes/Menus/Blighted Intro.unity
+    guid: 8d13d4189004178b9ae56379370f95ab
   - enabled: 1
     path: Assets/Scenes/Multiplayer/OnlineArena.unity
     guid: 7a6db70f4d104ad3b1cd5b0ec50a890e
-  - enabled: 1
-    path: Assets/Scenes/Menus/MultiplayerMenu.unity
-    guid: d867de090dae7455b98e77316d81b421
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/Menus/Story Mode Menu.unity
     guid: 0b0b7e120689c46dd9ad0d3c6585ce14
   - enabled: 0
@@ -36,7 +27,7 @@ EditorBuildSettings:
     path: Assets/Scenes/Story Levels/Level 4.unity
     guid: 18c6f73e7082a4dbf9cdc71b294939aa
   - enabled: 0
-    path: Assets/Scenes/Testing/Character tests.unity
-    guid: 25c9f7a0ebe0945138a3436a4f3b1c8e
+    path: Assets/Scenes/Testing/Movement.unity
+    guid: e1b03cc06c36d22488972f8dfb702f8d
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0
