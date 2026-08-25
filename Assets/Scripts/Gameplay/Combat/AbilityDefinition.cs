@@ -65,6 +65,7 @@ namespace Gameplay.Combat
 
         [Header("Presentación")]
         public Color vfxColor = new Color(0.83f, 0.64f, 0.20f, 0.9f);
+        public AudioClip castSfx;
 
         public string DisplayName => GameLocalization.Choose(spanishName, englishName);
     }
