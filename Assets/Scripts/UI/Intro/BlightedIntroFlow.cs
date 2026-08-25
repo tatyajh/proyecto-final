@@ -124,6 +124,10 @@ public sealed class BlightedIntroFlow : MonoBehaviour
         flow.HideAll();
         UITween.SnapHidden(settingsOverlay);
 
+        // Null-tolerante: no pasa nada si todavía no se importó el clip.
+        if (MusicPlayer.Instance != null)
+            MusicPlayer.Instance.PlayMusic(Resources.Load<AudioClip>("Audio/Music/MainTheme"));
+
         // SnapTo muestra la fase inicial al instante, sin fundido de entrada.
         flow.SnapTo(ReturnDirectlyToMenu ? Phase.Mode : Phase.Prologue);
         ReturnDirectlyToMenu = false;
