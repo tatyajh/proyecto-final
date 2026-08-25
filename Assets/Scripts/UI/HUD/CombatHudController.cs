@@ -11,10 +11,10 @@ using UIScripts;
 [DisallowMultipleComponent]
 public sealed class CombatHudController : MonoBehaviour
 {
-    private static readonly Color Panel = MenuTheme.WithAlpha(MenuTheme.HudPanel, 0.86f);
-    private static readonly Color Gold = MenuTheme.HudMossBright;
+    private static readonly Color Panel = MenuTheme.WithAlpha(MenuTheme.HudPanel, 0.66f);
+    private static readonly Color Gold = MenuTheme.GiltBright;
     private static readonly Color Ivory = MenuTheme.HudIvory;
-    private static readonly Color Plum = MenuTheme.WithAlpha(MenuTheme.HudAshDark, 0.94f);
+    private static readonly Color Plum = MenuTheme.WithAlpha(MenuTheme.HudAshDark, 0.78f);
 
     private PlayerController player;
     private GameObject hudRoot;
@@ -101,7 +101,7 @@ public sealed class CombatHudController : MonoBehaviour
         Stretch(root);
 
         Button exit = CreateButton(root, "Exit", GameLocalization.Choose("SALIR AL MENÚ", "EXIT TO MENU"),
-            new Vector2(26f, -24f), new Vector2(290f, 72f), TextAnchor.UpperLeft);
+            new Vector2(26f, -24f), new Vector2(400f, 90f), TextAnchor.UpperLeft);
         exit.onClick.AddListener(player.RequestExit);
 
         RectTransform identity = CreatePanel(root, "Player status", new Vector2(0f, -22f),
@@ -138,7 +138,7 @@ public sealed class CombatHudController : MonoBehaviour
         BuildTrainingControls(root);
         usesTouchControls = Application.isMobilePlatform ||
                             (Input.touchSupported && SystemInfo.deviceType == DeviceType.Handheld);
-        if (usesTouchControls) BuildTargetLock(root);
+        BuildTargetLock(root);
         BuildInputPresentation(root);
         Image blind = CreateImage(root, "Blind effect", new Color(0.015f, 0.008f, 0.02f, 0.78f));
         Stretch(blind.rectTransform);
@@ -238,8 +238,10 @@ public sealed class CombatHudController : MonoBehaviour
     private void BuildTargetLock(RectTransform root)
     {
         lockButton = CreateButton(root, "Target lock",
-            GameLocalization.Choose("FIJAR RIVAL", "LOCK TARGET"),
-            new Vector2(0f, 142f), new Vector2(320f, 72f), TextAnchor.LowerCenter);
+            usesTouchControls
+                ? GameLocalization.Choose("FIJAR RIVAL", "LOCK TARGET")
+                : GameLocalization.Choose("FIJAR RIVAL · TAB", "LOCK TARGET · TAB"),
+            new Vector2(0f, 142f), new Vector2(360f, 78f), TextAnchor.LowerCenter);
         lockButton.onClick.AddListener(() => player?.Targeting?.ToggleLock());
         lockButtonLabel = lockButton.GetComponentInChildren<TMP_Text>();
     }
@@ -376,9 +378,13 @@ public sealed class CombatHudController : MonoBehaviour
             return;
         }
 
+        string playerName = player.PlayerDisplayName;
+        if (string.IsNullOrWhiteSpace(playerName) || playerName == "Player")
+            playerName = CharacterCatalog.NameOf(player.SelectedCharacterIndex);
         nameLabel.text = training != null
-            ? $"{GameLocalization.Choose("TÚ", "YOU")} · {player.PlayerDisplayName.ToUpperInvariant()}"
-            : player.PlayerDisplayName.ToUpperInvariant();
+            ? $"{GameLocalization.Choose("TÚ", "YOU")} · {playerName.ToUpperInvariant()}"
+            : $"{GameLocalization.Choose("JUGADOR", "PLAYER")} · {playerName.ToUpperInvariant()}";
+        nameLabel.gameObject.SetActive(true);
         float health = Mathf.Clamp01(player.CurrentHealth / (float)PlayerController.MaxHealth);
         healthLabel.text = $"{GameLocalization.Choose("VIDA", "HEALTH")}  {Mathf.CeilToInt(health * 100f)}%";
         healthFill.rectTransform.anchorMax = new Vector2(health, 1f);
@@ -424,7 +430,9 @@ public sealed class CombatHudController : MonoBehaviour
             lockButtonLabel.text = targeting != null && targeting.HasTarget
                 ? GameLocalization.Choose($"SOLTAR · {targeting.TargetName.ToUpperInvariant()}",
                     $"RELEASE · {targeting.TargetName.ToUpperInvariant()}")
-                : GameLocalization.Choose("FIJAR RIVAL", "LOCK TARGET");
+                : usesTouchControls
+                    ? GameLocalization.Choose("FIJAR RIVAL", "LOCK TARGET")
+                    : GameLocalization.Choose("FIJAR RIVAL · TAB", "LOCK TARGET · TAB");
             Image lockImage = lockButton.targetGraphic as Image;
             if (lockImage != null)
             {
@@ -482,11 +490,11 @@ public sealed class CombatHudController : MonoBehaviour
         overlay.Duration = Mathf.Max(0.05f, duration);
         overlay.Fill.fillAmount = Mathf.Clamp01(remaining / overlay.Duration);
         string caption = overlay.Key == "Q"
-            ? GameLocalization.Choose("ATAQUE", "ATTACK")
-            : GameLocalization.Choose("DEFINITIVA", "ULTIMATE");
+            ? GameLocalization.Choose("BÁSICA", "BASIC")
+            : GameLocalization.Choose("ULTI", "ULT");
         overlay.Label.text = remaining > 0f
-            ? $"{overlay.Key}\n<size=55%>{remaining:0.0} s</size>"
-            : $"{overlay.Key}\n<size=50%>{caption}</size>";
+            ? $"<size=115%>{overlay.Key}</size>\n<size=62%>{remaining:0.0} s</size>"
+            : $"<size=115%>{overlay.Key}</size>\n<size=62%>{caption}</size>";
     }
 
     private void OnDestroy()

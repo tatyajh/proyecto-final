@@ -121,19 +121,15 @@ public sealed class CombatTargetingController : MonoBehaviour
     private bool HasLineOfSight(PlayerController candidate)
     {
         if (candidate == null) return false;
-        Vector3 start = VisualCenter(transform);
-        Vector3 end = VisualCenter(candidate.transform);
-        Vector3 ray = end - start;
-        float length = ray.magnitude;
-        if (length < 0.1f) return true;
-        foreach (RaycastHit hit in Physics.SphereCastAll(start, 0.12f, ray / length, length,
-                     Physics.AllLayers, QueryTriggerInteraction.Ignore))
-        {
-            PlayerController participant = hit.collider.GetComponentInParent<PlayerController>();
-            if (participant == owner || participant == candidate) continue;
-            return false;
-        }
-        return true;
+        // El árbol usa colliders de navegación enormes que no representan lo
+        // que realmente ve el jugador. Para el soft-lock, "visible" significa
+        // estar dentro de la pantalla; la resolución del ataque conserva sus
+        // propias reglas y alcance. Así Tab no falla por una rama decorativa.
+        Camera camera = Camera.main;
+        if (camera == null) return true;
+        Vector3 viewport = camera.WorldToViewportPoint(VisualCenter(candidate.transform));
+        return viewport.z > 0f && viewport.x >= -0.08f && viewport.x <= 1.08f &&
+               viewport.y >= -0.08f && viewport.y <= 1.08f;
     }
 
     private void SetLockedTarget(PlayerController candidate)
@@ -143,6 +139,7 @@ public sealed class CombatTargetingController : MonoBehaviour
         EnsureMarker();
         marker.SetActive(true);
         UpdateMarker();
+        FindFirstObjectByType<MobaCamera>()?.RequestImmediateReframe();
     }
 
     public void ClearLock()
@@ -150,6 +147,7 @@ public sealed class CombatTargetingController : MonoBehaviour
         lockedTarget = null;
         occludedSince = -1f;
         if (marker != null) marker.SetActive(false);
+        FindFirstObjectByType<MobaCamera>()?.RequestImmediateReframe();
     }
 
     private void EnsureMarker()

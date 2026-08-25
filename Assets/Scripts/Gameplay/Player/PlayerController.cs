@@ -98,6 +98,8 @@ public class PlayerController : NetworkBehaviour
     [Networked] public int ArenaPickupMask { get; private set; }
     [Networked] public int ArenaPickupTypes { get; private set; }
     [Networked] public int ArenaPickupGeneration { get; private set; }
+    [Networked] public int ArenaBudMask { get; private set; }
+    [Networked] private int ArenaBudHealthBits { get; set; }
     [Networked] public NetworkBool ArenaCorruptionActive { get; private set; }
     [Networked] public float ArenaCorruptionProgress { get; private set; }
     [Networked] private TickTimer ArenaNextPickupTimer { get; set; }
@@ -333,6 +335,8 @@ public class PlayerController : NetworkBehaviour
             ArenaPickupMask = 0;
             ArenaPickupTypes = 0;
             ArenaPickupGeneration = 0;
+            ArenaBudMask = 0;
+            ArenaBudHealthBits = 0;
             ArenaCorruptionActive = false;
             ArenaCorruptionProgress = 0f;
         }
@@ -705,6 +709,9 @@ public class PlayerController : NetworkBehaviour
             else TemporaryAbilityWall.Spawn(areaCenter, direction, ability.radius, 4f, ability.vfxColor);
         }
 
+        ArenaPowerUpManager.Instance?.TryStrikeBud(ability, transform.position, direction,
+            travel, areaCenter, sourcePlayer);
+
         HashSet<PlayerController> players = new HashSet<PlayerController>();
         GatherAbilityTargets(ability, direction, travel, areaCenter, players);
 
@@ -991,8 +998,22 @@ public class PlayerController : NetworkBehaviour
 
     private void ApplyDisplacement(Vector3 direction, float distance)
     {
-        Vector3 target = transform.position + direction.normalized * distance;
-        if (NavMesh.SamplePosition(target, out NavMeshHit hit, 3f, NavMesh.AllAreas)) target = hit.position;
+        Vector3 planarDirection = Vector3.ProjectOnPlane(direction, Vector3.up);
+        if (planarDirection.sqrMagnitude < 0.001f) return;
+        planarDirection.Normalize();
+
+        Vector3 start = transform.position;
+        if (NavMesh.SamplePosition(start, out NavMeshHit startHit, 2f, NavMesh.AllAreas))
+            start = startHit.position;
+        Vector3 target = start + planarDirection * distance;
+
+        // Muestrear solo el destino permitía atravesar el tronco durante un
+        // empuje. El raycast de NavMesh detiene el desplazamiento en su borde.
+        if (NavMesh.Raycast(start, target, out NavMeshHit boundary, NavMesh.AllAreas))
+            target = boundary.position - planarDirection * 0.45f;
+        else if (NavMesh.SamplePosition(target, out NavMeshHit targetHit, 1.25f, NavMesh.AllAreas))
+            target = targetHit.position;
+
         if (agent != null && agent.enabled && agent.isOnNavMesh) agent.Warp(target);
         else transform.position = target;
     }
@@ -1433,6 +1454,44 @@ public class PlayerController : NetworkBehaviour
         return (ArenaPickupType)((ArenaPickupTypes >> shift) & 0x3);
     }
 
+    public int NetworkBudHealthAt(int pedestal)
+    {
+        int shift = Mathf.Clamp(pedestal, 0, 3) * 2;
+        return (ArenaBudHealthBits >> shift) & 0x3;
+    }
+
+    public void RequestArenaBudStrike(int pedestal, int generation, int attackerPlayerId)
+    {
+        if (Object == null) return;
+        RPC_RequestArenaBudStrike(pedestal, generation, attackerPlayerId);
+    }
+
+    [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+    private void RPC_RequestArenaBudStrike(int pedestal, int generation, int attackerPlayerId)
+    {
+        if (!IsArenaCoordinator() || generation != ArenaPickupGeneration ||
+            pedestal < 0 || pedestal > 3 || (ArenaBudMask & (1 << pedestal)) == 0) return;
+
+        bool validAttacker = false;
+        foreach (PlayerController candidate in FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
+        {
+            if (!candidate.IsNetworkMatchParticipant || candidate.IsDefeated ||
+                candidate.Object.InputAuthority.PlayerId != attackerPlayerId) continue;
+            Vector3 budPosition = ArenaPowerUpManager.PedestalPosition(PlayerSpawner.ArenaCenter, pedestal);
+            validAttacker = Vector3.Distance(candidate.transform.position, budPosition) <= 10.5f;
+            break;
+        }
+        if (!validAttacker) return;
+
+        int shift = pedestal * 2;
+        int health = Mathf.Max(0, ((ArenaBudHealthBits >> shift) & 0x3) - 1);
+        ArenaBudHealthBits = (ArenaBudHealthBits & ~(0x3 << shift)) | (health << shift);
+        if (health > 0) return;
+
+        ArenaBudMask &= ~(1 << pedestal);
+        ArenaPickupMask |= 1 << pedestal;
+    }
+
     public void RequestArenaPickupClaim(int pedestal, int generation, int claimantPlayerId)
     {
         if (Object == null) return;
@@ -1471,6 +1530,8 @@ public class PlayerController : NetworkBehaviour
             ArenaPickupMask = 0;
             ArenaPickupTypes = 0;
             ArenaPickupGeneration = 0;
+            ArenaBudMask = 0;
+            ArenaBudHealthBits = 0;
             ArenaCorruptionActive = false;
             ArenaCorruptionProgress = 0f;
             ArenaNextPickupTimer = TickTimer.CreateFromSeconds(Runner, 15f);
@@ -1478,8 +1539,8 @@ public class PlayerController : NetworkBehaviour
         }
 
         int desired = MatchContext.TeamSize <= 1 ? 1 : 2;
-        if (CountBits(ArenaPickupMask) < desired && ArenaNextPickupTimer.ExpiredOrNotRunning(Runner))
-            SpawnNetworkPickups(desired);
+        if (CountBits(ArenaPickupMask | ArenaBudMask) < desired && ArenaNextPickupTimer.ExpiredOrNotRunning(Runner))
+            SpawnNetworkBuds(desired);
 
         if (!ArenaCorruptionActive && ArenaCorruptionTimer.ExpiredOrNotRunning(Runner))
             ArenaCorruptionActive = true;
@@ -1493,21 +1554,27 @@ public class PlayerController : NetworkBehaviour
                Runner.IsSharedModeMasterClient;
     }
 
-    private void SpawnNetworkPickups(int desired)
+    private void SpawnNetworkBuds(int desired)
     {
         int mask = ArenaPickupMask;
+        int budMask = ArenaBudMask;
+        int budHealth = ArenaBudHealthBits;
         int types = ArenaPickupTypes;
         int seed = ArenaPickupGeneration + 1;
-        for (int offset = 0; offset < 4 && CountBits(mask) < desired; offset++)
+        int first = Random.Range(0, 4);
+        for (int offset = 0; offset < 4 && CountBits(mask | budMask) < desired; offset++)
         {
-            int pedestal = (seed + offset) % 4;
-            if ((mask & (1 << pedestal)) != 0) continue;
-            int type = (seed + pedestal) % 3;
+            int pedestal = (first + offset) % 4;
+            if (((mask | budMask) & (1 << pedestal)) != 0) continue;
+            int type = Random.Range(0, 3);
             int shift = pedestal * 2;
             types = (types & ~(0x3 << shift)) | (type << shift);
-            mask |= 1 << pedestal;
+            budHealth = (budHealth & ~(0x3 << shift)) | (3 << shift);
+            budMask |= 1 << pedestal;
         }
         ArenaPickupMask = mask;
+        ArenaBudMask = budMask;
+        ArenaBudHealthBits = budHealth;
         ArenaPickupTypes = types;
         ArenaPickupGeneration = seed;
         ArenaNextPickupTimer = default;
@@ -1648,16 +1715,21 @@ public class PlayerController : NetworkBehaviour
     /// </summary>
     private void ProcessAttackInput()
     {
-        bool basic = Input.GetKeyDown(KeyCode.Q) || Input.GetMouseButtonDown(0);
-        bool ultimate = Input.GetKeyDown(KeyCode.E) || Input.GetMouseButtonDown(1);
+        bool basicKey = Input.GetKeyDown(KeyCode.Q);
+        bool ultimateKey = Input.GetKeyDown(KeyCode.E);
+        bool basicMouse = Input.GetMouseButtonDown(0);
+        bool ultimateMouse = Input.GetMouseButtonDown(1);
+        bool basic = basicKey || basicMouse;
+        bool ultimate = ultimateKey || ultimateMouse;
         if (!basic && !ultimate) return;
         if (IsPointerOverUI()) return;
 
-        AbilitySlot slot = ultimate ? AbilitySlot.Ultimate : AbilitySlot.Basic;
-        Vector3 direction = AssistAimDirection(GetAimDirectionFromCursor(), slot);
+        // Q/E disparan al frente actual. Solo los clics apuntan al cursor;
+        // TryCastAbility aplica después una única asistencia si hay soft-lock.
+        Vector3 direction = basicKey || ultimateKey ? transform.forward : GetAimDirectionFromCursor();
+        direction = Vector3.ProjectOnPlane(direction, Vector3.up);
         if (direction == Vector3.zero) return;
 
-        transform.rotation = Quaternion.LookRotation(direction);
         TryExecuteAttack(direction, ultimate);
     }
 

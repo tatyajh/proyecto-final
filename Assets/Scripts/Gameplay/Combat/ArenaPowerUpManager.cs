@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Gameplay.Combat;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -24,10 +25,29 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
         new Color(0.94f, 0.58f, 0.18f, 1f)
     };
 
+    private static readonly string[] PickupSpriteResources =
+    {
+        "Vfx/Pickups/VitalityBloom",
+        "Vfx/Pickups/HasteSeed",
+        "Vfx/Pickups/PowerSeed"
+    };
+
+    private static readonly string[] PickupNames =
+    {
+        "Flor de vitalidad",
+        "Semilla de celeridad",
+        "Semilla de poder"
+    };
+
+    private static Sprite[] pickupSprites;
+
     private sealed class PedestalVisual
     {
         public GameObject Root;
-        public Renderer Bloom;
+        public GameObject Bud;
+        public Renderer BudRenderer;
+        public Transform Symbol;
+        public SpriteRenderer SymbolRenderer;
         public LineRenderer Ring;
     }
 
@@ -40,6 +60,8 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
     private PlayerController coordinator;
     private Vector3 arenaCenter;
     private int localMask;
+    private int localBudMask;
+    private int localBudHealthBits;
     private int localTypes;
     private int localGeneration;
     private float nextLocalSpawnAt;
@@ -53,9 +75,24 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
     public bool CorruptionActive { get; private set; }
     public float CorruptionProgress { get; private set; }
     public float SafeRadius => Mathf.Lerp(20f, 6f, CorruptionProgress);
-    public string StatusText => CorruptionActive
-        ? GameLocalization.Choose($"CORRUPCIÓN · RADIO {SafeRadius:0}", $"CORRUPTION · RADIUS {SafeRadius:0}")
-        : string.Empty;
+    public string StatusText
+    {
+        get
+        {
+            if (CorruptionActive)
+                return GameLocalization.Choose($"CORRUPCIÓN · RADIO {SafeRadius:0}",
+                    $"CORRUPTION · RADIUS {SafeRadius:0}");
+            int buds = CurrentBudMask;
+            for (int i = 0; i < 4; i++)
+            {
+                if ((buds & (1 << i)) == 0) continue;
+                int health = Mathf.Max(1, CurrentBudHealthAt(i));
+                return GameLocalization.Choose($"CAPULLO CORRUPTO · {health} IMPACTOS",
+                    $"CORRUPTED BUD · {health} HITS");
+            }
+            return string.Empty;
+        }
+    }
 
     public static ArenaPowerUpManager EnsureFor(PlayerController localPlayer)
     {
@@ -84,6 +121,8 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
         trainingOpponent = opponent;
         arenaCenter = ResolveGround(center);
         localMask = 0;
+        localBudMask = 0;
+        localBudHealthBits = 0;
         localTypes = 0;
         localGeneration = 0;
         localRoundStartedAt = Time.unscaledTime;
@@ -106,6 +145,7 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
         else UpdateTraining();
 
         RefreshVisualState();
+        AnimatePowerUpSymbols();
         UpdateCorruptionRing();
     }
 
@@ -132,8 +172,8 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
     private void UpdateTraining()
     {
         float elapsed = Time.unscaledTime - localRoundStartedAt;
-        if (CountBits(localMask) < 1 && Time.unscaledTime >= nextLocalSpawnAt)
-            SpawnLocalPickup();
+        if (CountBits(localMask | localBudMask) < 1 && Time.unscaledTime >= nextLocalSpawnAt)
+            SpawnLocalBud();
 
         if (!CorruptionActive && elapsed >= 180f) CorruptionActive = true;
         if (CorruptionActive)
@@ -145,12 +185,13 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
         ApplyCorruptionIfNeeded(trainingOpponent);
     }
 
-    private void SpawnLocalPickup()
+    private void SpawnLocalBud()
     {
         localGeneration++;
-        int pedestal = localGeneration % 4;
-        int type = (localGeneration + pedestal) % 3;
-        localMask = 1 << pedestal;
+        int pedestal = Random.Range(0, 4);
+        int type = Random.Range(0, 3);
+        localBudMask = 1 << pedestal;
+        localBudHealthBits = 3 << (pedestal * 2);
         localTypes = (localTypes & ~(0x3 << (pedestal * 2))) | (type << (pedestal * 2));
         nextLocalSpawnAt = float.PositiveInfinity;
     }
@@ -221,9 +262,90 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
         return found;
     }
 
+    /// <summary>
+    /// Los altares primero generan un capullo corrupto. Tres impactos válidos
+    /// lo abren y revelan uno de los tres beneficios al azar.
+    /// </summary>
+    public void TryStrikeBud(AbilityDefinition ability, Vector3 origin, Vector3 direction,
+        float travel, Vector3 areaCenter, int attackerPlayerId)
+    {
+        if (ability == null || CorruptionActive) return;
+        int budMask = CurrentBudMask;
+        if (budMask == 0) return;
+
+        for (int i = 0; i < 4; i++)
+        {
+            if ((budMask & (1 << i)) == 0) continue;
+            Vector3 budPosition = PedestalPosition(arenaCenter, i) + Vector3.up;
+            if (!AbilityReachesPoint(ability, origin, direction, travel, areaCenter, budPosition)) continue;
+
+            if (owner != null && owner.IsOnlinePlayer)
+            {
+                if (coordinator != null)
+                    coordinator.RequestArenaBudStrike(i, coordinator.ArenaPickupGeneration, attackerPlayerId);
+            }
+            else
+            {
+                int shift = i * 2;
+                int health = Mathf.Max(0, ((localBudHealthBits >> shift) & 0x3) - 1);
+                localBudHealthBits = (localBudHealthBits & ~(0x3 << shift)) | (health << shift);
+                if (health <= 0)
+                {
+                    localBudMask &= ~(1 << i);
+                    localMask |= 1 << i;
+                }
+            }
+            break;
+        }
+    }
+
+    private static bool AbilityReachesPoint(AbilityDefinition ability, Vector3 origin, Vector3 direction,
+        float travel, Vector3 areaCenter, Vector3 point)
+    {
+        origin.y = areaCenter.y = point.y = 0f;
+        direction = Vector3.ProjectOnPlane(direction, Vector3.up).normalized;
+        switch (ability.shape)
+        {
+            case AbilityShape.Line:
+            case AbilityShape.Dash:
+                Vector3 end = origin + direction * travel;
+                return DistanceToSegment(point, origin, end) <= Mathf.Max(0.9f, ability.radius);
+            case AbilityShape.Cone:
+                Vector3 delta = point - origin;
+                return delta.magnitude <= ability.range + 0.8f &&
+                       Vector3.Angle(direction, delta.normalized) <= 42f;
+            case AbilityShape.Area:
+            case AbilityShape.Leap:
+            case AbilityShape.Wall:
+                return Vector3.Distance(point, areaCenter) <= Mathf.Max(1.2f, ability.radius);
+            default:
+                return false;
+        }
+    }
+
+    private static float DistanceToSegment(Vector3 point, Vector3 start, Vector3 end)
+    {
+        Vector3 segment = end - start;
+        float lengthSquared = segment.sqrMagnitude;
+        if (lengthSquared < 0.001f) return Vector3.Distance(point, start);
+        float t = Mathf.Clamp01(Vector3.Dot(point - start, segment) / lengthSquared);
+        return Vector3.Distance(point, start + segment * t);
+    }
+
     private int CurrentMask => owner != null && owner.IsOnlinePlayer && coordinator != null
         ? coordinator.ArenaPickupMask
         : localMask;
+
+    private int CurrentBudMask => owner != null && owner.IsOnlinePlayer && coordinator != null
+        ? coordinator.ArenaBudMask
+        : localBudMask;
+
+    private int CurrentBudHealthAt(int pedestal)
+    {
+        return owner != null && owner.IsOnlinePlayer && coordinator != null
+            ? coordinator.NetworkBudHealthAt(pedestal)
+            : (localBudHealthBits >> (Mathf.Clamp(pedestal, 0, 3) * 2)) & 0x3;
+    }
 
     private ArenaPickupType CurrentTypeAt(int pedestal)
     {
@@ -254,13 +376,24 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             if (collider != null) Destroy(collider);
             SetMaterial(baseObject.GetComponent<Renderer>(), new Color(0.12f, 0.07f, 0.11f, 1f));
 
-            GameObject bloom = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            bloom.name = "Primordial bloom";
-            bloom.transform.SetParent(root.transform, false);
-            bloom.transform.localPosition = Vector3.up * 1.05f;
-            bloom.transform.localScale = Vector3.one * 0.72f;
-            collider = bloom.GetComponent<Collider>();
+            GameObject bud = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            bud.name = "Capullo corrupto · golpéalo 3 veces";
+            bud.transform.SetParent(root.transform, false);
+            bud.transform.localPosition = Vector3.up * 1.05f;
+            bud.transform.localScale = Vector3.one * 0.78f;
+            collider = bud.GetComponent<Collider>();
             if (collider != null) Destroy(collider);
+            Renderer budRenderer = bud.GetComponent<Renderer>();
+            SetMaterial(budRenderer, new Color(0.48f, 0.025f, 0.12f, 1f));
+
+            GameObject symbol = new GameObject("Símbolo primordial");
+            symbol.transform.SetParent(root.transform, false);
+            symbol.transform.localPosition = Vector3.up * 1.18f;
+            SpriteRenderer symbolRenderer = symbol.AddComponent<SpriteRenderer>();
+            symbolRenderer.color = Color.white;
+            symbolRenderer.sortingOrder = 4;
+            symbolRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            symbolRenderer.receiveShadows = false;
 
             LineRenderer ring = root.AddComponent<LineRenderer>();
             ring.loop = true;
@@ -272,7 +405,15 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
                 float angle = p * Mathf.PI * 2f / ring.positionCount;
                 ring.SetPosition(p, new Vector3(Mathf.Cos(angle) * 1.25f, 0.14f, Mathf.Sin(angle) * 1.25f));
             }
-            visuals[i] = new PedestalVisual { Root = root, Bloom = bloom.GetComponent<Renderer>(), Ring = ring };
+            visuals[i] = new PedestalVisual
+            {
+                Root = root,
+                Bud = bud,
+                BudRenderer = budRenderer,
+                Symbol = symbol.transform,
+                SymbolRenderer = symbolRenderer,
+                Ring = ring
+            };
         }
         RefreshVisualTransforms();
     }
@@ -286,25 +427,95 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
     private void RefreshVisualState()
     {
         int mask = CurrentMask;
+        int budMask = CurrentBudMask;
         for (int i = 0; i < visuals.Length; i++)
         {
             PedestalVisual visual = visuals[i];
             if (visual == null) continue;
             visual.Root.transform.position = PedestalPosition(arenaCenter, i);
             bool active = (mask & (1 << i)) != 0 && !CorruptionActive;
+            bool budActive = (budMask & (1 << i)) != 0 && !CorruptionActive;
             // El altar permanece como punto de referencia para recorrer la
-            // arena. Solo la flor y su halo desaparecen mientras recarga.
+            // arena. Solo el símbolo botánico y su halo desaparecen al recargar.
             visual.Root.SetActive(true);
-            if (visual.Bloom != null) visual.Bloom.gameObject.SetActive(active);
-            if (visual.Ring != null) visual.Ring.enabled = active;
+            if (visual.Symbol != null) visual.Symbol.gameObject.SetActive(active);
+            if (visual.Bud != null) visual.Bud.SetActive(budActive);
+            if (visual.Ring != null) visual.Ring.enabled = active || budActive;
+            if (budActive)
+            {
+                int health = Mathf.Max(1, CurrentBudHealthAt(i));
+                float healthScale = Mathf.Lerp(0.62f, 0.84f, health / 3f);
+                visual.Bud.transform.localScale = Vector3.one * healthScale;
+                Color budColor = Color.Lerp(new Color(0.28f, 0.01f, 0.05f),
+                    new Color(0.72f, 0.035f, 0.18f), health / 3f);
+                SetMaterial(visual.BudRenderer, budColor);
+                visual.Ring.startColor = budColor;
+                visual.Ring.endColor = budColor;
+                if (visual.Ring.sharedMaterial == null)
+                    visual.Ring.sharedMaterial = NewMaterial(budColor);
+                continue;
+            }
             if (!active) continue;
-            Color color = PickupColors[(int)CurrentTypeAt(i)];
-            SetMaterial(visual.Bloom, color);
+
+            ArenaPickupType type = CurrentTypeAt(i);
+            int typeIndex = (int)type;
+            Sprite sprite = GetPickupSprite(typeIndex);
+            if (visual.SymbolRenderer != null && visual.SymbolRenderer.sprite != sprite)
+            {
+                visual.SymbolRenderer.sprite = sprite;
+                visual.Symbol.name = PickupNames[typeIndex];
+                FitSymbolToHeight(visual.Symbol, sprite, 1.65f);
+            }
+
+            Color color = PickupColors[typeIndex];
             visual.Ring.startColor = color;
             visual.Ring.endColor = color;
             if (visual.Ring.sharedMaterial == null)
                 visual.Ring.sharedMaterial = NewMaterial(color);
         }
+    }
+
+    private void AnimatePowerUpSymbols()
+    {
+        Camera camera = Camera.main;
+        float time = Time.unscaledTime;
+        for (int i = 0; i < visuals.Length; i++)
+        {
+            PedestalVisual visual = visuals[i];
+            if (visual == null) continue;
+            if (visual.Symbol != null && visual.Symbol.gameObject.activeSelf)
+            {
+                visual.Symbol.localPosition = Vector3.up * (1.22f + Mathf.Sin(time * 2f + i * 0.8f) * 0.12f);
+                if (camera != null)
+                    visual.Symbol.rotation = camera.transform.rotation * Quaternion.Euler(0f, 0f, time * 14f + i * 35f);
+            }
+
+            if (visual.Bud != null && visual.Bud.activeSelf)
+            {
+                float pulse = 1f + Mathf.Sin(time * 4f + i) * 0.06f;
+                visual.Bud.transform.localScale *= pulse;
+            }
+        }
+    }
+
+    private static Sprite GetPickupSprite(int typeIndex)
+    {
+        if (pickupSprites == null || pickupSprites.Length != PickupSpriteResources.Length)
+            pickupSprites = new Sprite[PickupSpriteResources.Length];
+        if (pickupSprites[typeIndex] == null)
+            pickupSprites[typeIndex] = Resources.Load<Sprite>(PickupSpriteResources[typeIndex]);
+        return pickupSprites[typeIndex];
+    }
+
+    private static void FitSymbolToHeight(Transform symbol, Sprite sprite, float desiredHeight)
+    {
+        if (symbol == null || sprite == null)
+        {
+            if (symbol != null) symbol.localScale = Vector3.one;
+            return;
+        }
+        float scale = desiredHeight / Mathf.Max(0.01f, sprite.bounds.size.y);
+        symbol.localScale = Vector3.one * scale;
     }
 
     private void UpdateCorruptionRing()

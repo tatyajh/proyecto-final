@@ -29,6 +29,7 @@ public static class LocalCharacterTestTool
 
         PlayModeContext.UseLocalStory();
         OnlineMatchState.Reset();
+        SessionState.SetBool(PlayFromStartupScene.ExplicitPlayStartKey, true);
         EditorSceneManager.playModeStartScene = arena;
         SessionState.SetBool(SmokeKey, true);
         Debug.Log("[LocalCharacterTest] Iniciando arena sin matchmaking. WASD/clic mueve, Q ataca, E usa la definitiva y Tab fija al rival.");
@@ -45,6 +46,7 @@ public static class LocalCharacterTestTool
         }
         PlayModeContext.UseTraining();
         OnlineMatchState.Reset();
+        SessionState.SetBool(PlayFromStartupScene.ExplicitPlayStartKey, true);
         EditorSceneManager.OpenScene(MovementPath);
         EditorSceneManager.playModeStartScene = null;
         Debug.Log("[LocalCharacterTest] Movement inicia directamente como duelo de entrenamiento.");
@@ -62,6 +64,7 @@ public static class LocalCharacterTestTool
         }
 
         BlightedIntroFlow.ReturnDirectlyToMenu = false;
+        SessionState.SetBool(PlayFromStartupScene.ExplicitPlayStartKey, true);
         EditorSceneManager.playModeStartScene = intro;
         Debug.Log("[LocalCharacterTest] Iniciando el flujo completo del menú.");
         EditorApplication.isPlaying = true;

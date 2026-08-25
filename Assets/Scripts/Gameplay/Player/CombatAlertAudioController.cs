@@ -96,7 +96,9 @@ public sealed class CombatAlertAudioController : MonoBehaviour
             trackedEnemy = nearest;
             previousEnemyPosition = nearest.transform.position;
             previousSampleAt = now;
-            approachingFor = 0f;
+            // El duelo local empieza dentro del radio de aviso. Esa entrada
+            // inicial también debe oírse aunque el bot tarde en dar su paso.
+            approachingFor = nearestDistance <= 12f ? 0.35f : 0f;
             return;
         }
 
@@ -110,7 +112,8 @@ public sealed class CombatAlertAudioController : MonoBehaviour
         previousEnemyPosition = nearest.transform.position;
         previousSampleAt = now;
 
-        if (approachArmed && nearestDistance <= 12f && closingSpeed >= 0.35f)
+        if (approachArmed && nearestDistance <= 12f &&
+            (closingSpeed >= 0.20f || nearestDistance <= 10.5f))
             approachingFor += deltaTime;
         else
             approachingFor = 0f;

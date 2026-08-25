@@ -16,11 +16,11 @@ public sealed class MobaCamera : MonoBehaviour
     [Header("Vista isométrica")]
     [Range(30f, 70f)] [SerializeField] private float pitch = 52f;
     [Range(-180f, 180f)] [SerializeField] private float yaw = -51f;
-    [SerializeField, Min(1f)] private float distance = 18f;
+    [SerializeField, Min(1f)] private float distance = 38f;
     [SerializeField] private Vector3 targetOffset = new Vector3(0f, 3.2f, 0f);
 
     [Header("Soft lock")]
-    [SerializeField, Min(1f)] private float unlockedDistance = 18f;
+    [SerializeField, Min(1f)] private float unlockedDistance = 38f;
     [SerializeField, Min(1f)] private float minimumLockedDistance = 18f;
     [SerializeField, Min(1f)] private float maximumLockedDistance = 34f;
     [SerializeField, Range(0f, 30f)] private float yawDeadZone = 8f;
@@ -152,6 +152,11 @@ public sealed class MobaCamera : MonoBehaviour
         if (Application.isPlaying) transform.position += worldImpulse;
     }
 
+    public void RequestImmediateReframe()
+    {
+        snapNextFrame = true;
+    }
+
     private void RefreshOccluders(Vector3 playerCenter, Vector3 enemyCenter)
     {
         RefreshSceneRendererCache();
@@ -247,11 +252,19 @@ public sealed class MobaCamera : MonoBehaviour
     private static bool IsBotanicalOccluder(Renderer renderer)
     {
         if (renderer == null) return false;
-        string root = renderer.transform.root.name.ToLowerInvariant();
-        if (!root.Contains("arbol") && !root.Contains("tree")) return false;
+        Transform cursor = renderer.transform;
+        while (cursor != null)
+        {
+            string objectName = cursor.name.ToLowerInvariant();
+            if (objectName.Contains("arbol") || objectName.Contains("árbol") || objectName.Contains("tree"))
+                return true;
+            cursor = cursor.parent;
+        }
+
         string name = renderer.name.ToLowerInvariant();
         return name.Contains("tree") || name.Contains("liana") || name.Contains("branch") ||
-               name.Contains("rama") || name.Contains("vine");
+               name.Contains("rama") || name.Contains("vine") || name.Contains("tronco") ||
+               name.Contains("root") || name.Contains("raiz") || name.Contains("raíz");
     }
 
     private bool CanOcclude(Renderer renderer)

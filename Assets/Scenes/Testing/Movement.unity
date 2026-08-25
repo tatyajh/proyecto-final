@@ -1836,9 +1836,9 @@ MonoBehaviour:
   target: {fileID: 140860596}
   pitch: 52
   yaw: -51
-  distance: 18
+  distance: 38
   targetOffset: {x: 0, y: 3.2, z: 0}
-  unlockedDistance: 18
+  unlockedDistance: 38
   minimumLockedDistance: 18
   maximumLockedDistance: 34
   yawDeadZone: 8
