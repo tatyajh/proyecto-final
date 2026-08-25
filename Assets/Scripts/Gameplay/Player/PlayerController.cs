@@ -67,6 +67,8 @@ public class PlayerController : NetworkBehaviour
     private Transform prototypeVisual;
     private Animator prototypeAnimator;
     private int prototypeCharacterIndex = -1;
+    private bool groundImportedVisual;
+    private float importedVisualGroundOffset;
     private bool exitConfirmationVisible;
     private MatchOutcome currentOutcome;
     private LocalCombatantConfig localCombatant;
@@ -226,6 +228,9 @@ public class PlayerController : NetworkBehaviour
             if (NavMesh.SamplePosition(position, out NavMeshHit hit, 12f, agent.areaMask))
                 agent.Warp(hit.position);
         }
+        if (prototypeVisual != null)
+            StartCoroutine(StabilizeImportedCharacterGrounding(prototypeVisual.gameObject,
+                CharacterCatalog.ModelLocalOffsetOf(SelectedCharacterIndex).y));
     }
 
     public bool TrySetBotDestination(Vector3 destination, float speedMultiplier = 1f)
@@ -555,6 +560,17 @@ public class PlayerController : NetworkBehaviour
                 ProcessClickToMove(isAiming);
             }
         }
+    }
+
+    private void LateUpdate()
+    {
+        // Los bounds de un SkinnedMeshRenderer cambian después de evaluar el
+        // Animator. Corregir solo al crear el personaje dejaba a Terramor y a
+        // algunas poses de idle unos centímetros en el aire. Mantener el punto
+        // visual más bajo sobre el NavMesh no altera la escala 4.5 ni mueve la
+        // raíz que Fusion/NavMesh sincronizan.
+        if (groundImportedVisual && prototypeVisual != null)
+            FitImportedCharacterToCollider(prototypeVisual.gameObject, importedVisualGroundOffset);
     }
 
     public override void FixedUpdateNetwork()
@@ -1095,6 +1111,9 @@ public class PlayerController : NetworkBehaviour
         if (prototypeVisual != null)
             Destroy(prototypeVisual.gameObject);
 
+        groundImportedVisual = false;
+        importedVisualGroundOffset = 0f;
+
         MeshRenderer capsuleRenderer = GetComponent<MeshRenderer>();
         if (capsuleRenderer != null)
             capsuleRenderer.enabled = false;
@@ -1144,6 +1163,8 @@ public class PlayerController : NetworkBehaviour
         prototypeAnimator = EnsureCharacterAnimator(instance, characterIndex);
         prototypeVisual = instance.transform;
         Vector3 presentationOffset = CharacterCatalog.ModelLocalOffsetOf(characterIndex);
+        importedVisualGroundOffset = presentationOffset.y;
+        groundImportedVisual = true;
         instance.transform.localPosition = new Vector3(presentationOffset.x, 0f, presentationOffset.z);
         FitImportedCharacterToCollider(instance, presentationOffset.y);
         StartCoroutine(StabilizeImportedCharacterGrounding(instance, presentationOffset.y));
@@ -1152,11 +1173,16 @@ public class PlayerController : NetworkBehaviour
 
     private IEnumerator StabilizeImportedCharacterGrounding(GameObject character, float authoredGroundOffset)
     {
-        // El Animator y el NavMeshAgent actualizan sus bounds/altura durante
-        // los primeros frames. Repetir la alineación una vez evita que el arte
-        // quede flotando después del primer tick de navegación.
-        yield return null;
-        yield return new WaitForEndOfFrame();
+        // Animator, skinning y NavMesh actualizan sus bounds en momentos
+        // distintos. Se estabiliza durante varios frames y una última vez
+        // después de la transición inicial para que ningún FBX quede flotando.
+        for (int pass = 0; pass < 3; pass++)
+        {
+            yield return new WaitForEndOfFrame();
+            if (character == null) yield break;
+            FitImportedCharacterToCollider(character, authoredGroundOffset);
+        }
+        yield return new WaitForSeconds(0.18f);
         if (character != null) FitImportedCharacterToCollider(character, authoredGroundOffset);
     }
 
@@ -1241,12 +1267,11 @@ public class PlayerController : NetworkBehaviour
         int areaMask = agent != null ? agent.areaMask : NavMesh.AllAreas;
         if (NavMesh.SamplePosition(transform.position, out NavMeshHit groundHit, 8f, areaMask))
             groundY = groundHit.position.y;
-        float groundDelta = groundY - visualBounds.min.y;
-        // modelLocalOffset.y es una corrección pequeña, calibrada por arte,
-        // expresada en espacio local del Player. Se aplica después de apoyar
-        // el bounds porque la escala 4.5 del rig también debe afectarla.
-        character.transform.position += Vector3.up * groundDelta;
-        character.transform.localPosition += Vector3.up * authoredGroundOffset;
+        // modelLocalOffset.y es una corrección calibrada por arte. Calcular el
+        // destino absoluto del bounds vuelve esta operación idempotente: puede
+        // repetirse tras una animación o revancha sin acumular altura.
+        float desiredMinimumY = groundY + authoredGroundOffset * Mathf.Abs(transform.lossyScale.y);
+        character.transform.position += Vector3.up * (desiredMinimumY - visualBounds.min.y);
     }
 
     private static bool IsCombatParticipantForAbilities(PlayerController player)

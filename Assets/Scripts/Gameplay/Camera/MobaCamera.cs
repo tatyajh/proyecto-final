@@ -15,14 +15,17 @@ public sealed class MobaCamera : MonoBehaviour
 
     [Header("Vista isométrica")]
     [Range(30f, 70f)] [SerializeField] private float pitch = 52f;
-    [Range(-180f, 180f)] [SerializeField] private float yaw = -51f;
+    [Range(-180f, 180f)] [SerializeField] private float yaw = 129f;
     [SerializeField, Min(1f)] private float distance = 38f;
-    [SerializeField] private Vector3 targetOffset = new Vector3(0f, 3.2f, 0f);
+    [SerializeField] private Vector3 targetOffset = new Vector3(0f, 1f, 0f);
 
     [Header("Soft lock")]
     [SerializeField, Min(1f)] private float unlockedDistance = 38f;
-    [SerializeField, Min(1f)] private float minimumLockedDistance = 18f;
-    [SerializeField, Min(1f)] private float maximumLockedDistance = 34f;
+    [SerializeField, Min(1f)] private float minimumUnlockedDistance = 20f;
+    [SerializeField, Min(1f)] private float maximumUnlockedDistance = 48f;
+    [SerializeField, Min(1f)] private float minimumLockedDistance = 22f;
+    [SerializeField, Min(1f)] private float maximumLockedDistance = 32f;
+    [SerializeField, Min(0.1f)] private float manualZoomSpeed = 3f;
     [SerializeField, Range(0f, 30f)] private float yawDeadZone = 8f;
     [SerializeField, Min(1f)] private float maximumYawSpeed = 45f;
     [SerializeField, Range(0.2f, 0.8f)] private float lockedTargetWeight = 0.48f;
@@ -36,18 +39,35 @@ public sealed class MobaCamera : MonoBehaviour
     [SerializeField] private bool fadeOccluders = true;
     [SerializeField, Min(0.05f)] private float occlusionRadius = 0.42f;
     [SerializeField, Min(0.05f)] private float visualOcclusionRefresh = 0.18f;
-    [SerializeField, Range(0.08f, 0.8f)] private float occludedAlpha = 0.38f;
+    [SerializeField, Range(0.03f, 0.8f)] private float occludedAlpha = 0.12f;
+    [SerializeField, Range(0.08f, 0.45f)] private float treeOccludedAlpha = 0.22f;
     [SerializeField, Min(0.5f)] private float occlusionFadeSpeed = 5f;
+
+    [Header("Identidad de la arena")]
+    [Tooltip("Integra sutilmente la esfera roja en la vista libre sin centrarla sobre el jugador.")]
+    [SerializeField, Range(0f, 0.35f)] private float arenaFeatureWeight = 0.26f;
+    [Tooltip("Eleva el encuadre para mostrar la esfera sin alejar la cámara ni reducir a los personajes.")]
+    [SerializeField, Range(0f, 0.75f)] private float arenaFeatureVerticalWeight = 0.52f;
+    [SerializeField, Min(5f)] private float arenaFeatureMaximumDistance = 48f;
+    [SerializeField, Min(1f)] private float arenaFeatureDiameter = 10f;
+    [SerializeField] private Vector3 arenaFeatureFallbackPosition = new Vector3(64.1f, 26.3f, -27.1f);
 
     private CombatTargetingController targeting;
     private float currentYaw;
     private float currentDistance;
+    private float requestedUnlockedDistance;
+    private float previousPinchDistance = -1f;
     private bool snapNextFrame = true;
     private readonly HashSet<Renderer> occludingRenderers = new HashSet<Renderer>();
     private readonly HashSet<Transform> combatantRoots = new HashSet<Transform>();
     private readonly Dictionary<Renderer, OccluderFade> fadingOccluders = new Dictionary<Renderer, OccluderFade>();
     private Renderer[] sceneRenderers = System.Array.Empty<Renderer>();
     private float nextVisualOcclusionRefresh;
+    private Renderer arenaFeatureRenderer;
+    private GameObject arenaFeaturePresentation;
+    private Material arenaFeatureRuntimeMaterial;
+    private float nextArenaFeatureSearch;
+    private bool arenaFeaturePrepared;
 
     public Transform FollowTarget => target;
     public Transform LockedTarget => targeting != null ? targeting.LockedTargetTransform : null;
@@ -65,7 +85,10 @@ public sealed class MobaCamera : MonoBehaviour
     private void OnEnable()
     {
         currentYaw = yaw;
-        currentDistance = Mathf.Max(1f, distance);
+        float configuredDistance = unlockedDistance > 0f ? unlockedDistance : distance;
+        requestedUnlockedDistance = Mathf.Clamp(configuredDistance,
+            minimumUnlockedDistance, maximumUnlockedDistance);
+        currentDistance = requestedUnlockedDistance;
         snapNextFrame = true;
     }
 
@@ -77,7 +100,11 @@ public sealed class MobaCamera : MonoBehaviour
         Vector3 playerCenter = VisualCenter(target);
         Vector3 focusPoint = playerCenter;
         float desiredYaw = yaw;
-        float desiredDistance = unlockedDistance;
+        UpdateManualZoom(locked == null);
+        // El encuadre aprobado por arte usa 38 unidades exactas. La escala de
+        // los meshes no debe volver a alterar la cámara de manera implícita.
+        float desiredDistance = Mathf.Clamp(requestedUnlockedDistance,
+            minimumUnlockedDistance, maximumUnlockedDistance);
 
         if (locked != null)
         {
@@ -95,6 +122,21 @@ public sealed class MobaCamera : MonoBehaviour
         else
         {
             focusPoint += targetOffset;
+            if (TryGetArenaFeature(out Vector3 featureCenter))
+            {
+                Vector3 planar = featureCenter - playerCenter;
+                planar.y = 0f;
+                if (planar.magnitude <= arenaFeatureMaximumDistance)
+                {
+                    // El peso horizontal conserva al luchador como sujeto
+                    // principal. El vertical es independiente porque Blood
+                    // está por encima de la copa: así entra en plano sin zoom.
+                    focusPoint.x = Mathf.Lerp(focusPoint.x, featureCenter.x, arenaFeatureWeight);
+                    focusPoint.z = Mathf.Lerp(focusPoint.z, featureCenter.z, arenaFeatureWeight);
+                    focusPoint.y = Mathf.Lerp(focusPoint.y, featureCenter.y,
+                        arenaFeatureVerticalWeight);
+                }
+            }
         }
 
         if (snapNextFrame || !Application.isPlaying)
@@ -252,19 +294,35 @@ public sealed class MobaCamera : MonoBehaviour
     private static bool IsBotanicalOccluder(Renderer renderer)
     {
         if (renderer == null) return false;
-        Transform cursor = renderer.transform;
-        while (cursor != null)
-        {
-            string objectName = cursor.name.ToLowerInvariant();
-            if (objectName.Contains("arbol") || objectName.Contains("árbol") || objectName.Contains("tree"))
-                return true;
-            cursor = cursor.parent;
-        }
-
         string name = renderer.name.ToLowerInvariant();
-        return name.Contains("tree") || name.Contains("liana") || name.Contains("branch") ||
-               name.Contains("rama") || name.Contains("vine") || name.Contains("tronco") ||
-               name.Contains("root") || name.Contains("raiz") || name.Contains("raíz");
+        if (name == "tree" || name.StartsWith("liana") ||
+               name.Contains("branch") || name.Contains("rama") || name.Contains("vine") ||
+               name.Contains("canopy") || name.Contains("copa")) return true;
+
+        // El FBX agrupa parte del tronco y de la esfera en mallas con nombres
+        // genéricos. Se aceptan como vegetación solo si pertenecen al árbol y
+        // no son piso/roca/raíz transitable; así se despeja la línea de cámara
+        // sin hacer desaparecer el terreno cuando el jugador se acerca.
+        string rootName = renderer.transform.root.name.ToLowerInvariant();
+        bool belongsToArenaTree = rootName.Contains("arbol de la abundancia") ||
+                                  rootName.Contains("árbol de la abundancia");
+        if (!belongsToArenaTree) return false;
+        foreach (Material material in renderer.sharedMaterials)
+        {
+            if (material == null) continue;
+            string materialName = material.name.ToLowerInvariant();
+            if (materialName.Contains("suel") || materialName.Contains("ground") ||
+                materialName.Contains("bricksrock") || materialName.Contains("pilar") ||
+                materialName.Contains("stone") || materialName.Contains("roca"))
+                return false;
+        }
+        return !name.Contains("floor") && !name.Contains("ground") &&
+               !name.Contains("suelo") && !name.Contains("terrain") &&
+               !name.Contains("rock") && !name.Contains("roca") &&
+               !name.Contains("stone") && !name.Contains("piedra") &&
+               !name.Contains("platform") && !name.Contains("plataforma") &&
+               !name.Contains("root") && !name.Contains("raiz") &&
+               !name.Contains("raíz");
     }
 
     private bool CanOcclude(Renderer renderer)
@@ -283,7 +341,170 @@ public sealed class MobaCamera : MonoBehaviour
         // escenario. Suelo, plataformas y rocas transitables deben conservarse
         // siempre; solo la vegetacion elevada que cruza la vista puede volverse
         // translucida.
-        return CanOcclude(renderer) && IsBotanicalOccluder(renderer);
+        return CanOcclude(renderer) &&
+               (IsBotanicalOccluder(renderer) || IsArenaFeature(renderer));
+    }
+
+    private bool TryGetArenaFeature(out Vector3 center)
+    {
+        if (Application.isPlaying && !arenaFeaturePrepared)
+            PrepareArenaFeature();
+
+        if (arenaFeatureRenderer == null && Time.unscaledTime >= nextArenaFeatureSearch)
+        {
+            nextArenaFeatureSearch = Time.unscaledTime + 1f;
+            foreach (Renderer renderer in FindObjectsByType<Renderer>(
+                         FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            {
+                if (!IsArenaFeature(renderer)) continue;
+                arenaFeatureRenderer = renderer;
+                break;
+            }
+        }
+
+        if (arenaFeatureRenderer != null && arenaFeatureRenderer.enabled &&
+            !arenaFeatureRenderer.forceRenderingOff)
+        {
+            center = arenaFeatureRenderer.bounds.center;
+            return true;
+        }
+
+        // La posición corresponde al nodo Blood del FBX (centro local a
+        // 39,27 unidades de altura) ya transformado por el prefab de la arena.
+        // Sirve durante el primer frame o si Unity aún no actualizó sus bounds.
+        center = arenaFeatureFallbackPosition;
+        return true;
+    }
+
+    private void PrepareArenaFeature()
+    {
+        arenaFeaturePrepared = true;
+        Transform feature = null;
+        foreach (Transform candidate in Resources.FindObjectsOfTypeAll<Transform>())
+        {
+            if (candidate == null || !candidate.gameObject.scene.IsValid() ||
+                !candidate.gameObject.scene.isLoaded ||
+                !candidate.name.Equals("Blood", System.StringComparison.OrdinalIgnoreCase)) continue;
+            feature = candidate;
+            break;
+        }
+
+        MeshFilter sourceFilter = feature != null
+            ? feature.GetComponentInChildren<MeshFilter>(true)
+            : null;
+        Renderer sourceRenderer = feature != null
+            ? feature.GetComponentInChildren<Renderer>(true)
+            : null;
+        Mesh sourceMesh = sourceFilter != null ? sourceFilter.sharedMesh : null;
+
+        if (sourceRenderer != null && sourceRenderer.enabled &&
+            sourceRenderer.gameObject.activeInHierarchy)
+        {
+            float visibleDiameter = Mathf.Max(sourceRenderer.bounds.size.x,
+                sourceRenderer.bounds.size.y, sourceRenderer.bounds.size.z);
+            if (visibleDiameter >= arenaFeatureDiameter * 0.72f)
+            {
+                arenaFeatureRenderer = sourceRenderer;
+                return;
+            }
+        }
+
+        // El prefab recibido oculta Blood con localScale = 0. Restaurarlo en
+        // su jerarquía es frágil por las escalas anidadas del FBX. Una copia
+        // visual independiente conserva exactamente su malla/material, no
+        // añade colisión y no modifica el asset ni el gameplay.
+        if (sourceMesh != null)
+        {
+            arenaFeaturePresentation = new GameObject("Arena Blood Orb (Presentation)");
+            arenaFeaturePresentation.transform.SetPositionAndRotation(
+                feature.position, feature.rotation);
+            arenaFeaturePresentation.layer = feature.gameObject.layer;
+
+            MeshFilter presentationFilter = arenaFeaturePresentation.AddComponent<MeshFilter>();
+            presentationFilter.sharedMesh = sourceMesh;
+            MeshRenderer presentationRenderer = arenaFeaturePresentation.AddComponent<MeshRenderer>();
+            if (sourceRenderer != null)
+            {
+                presentationRenderer.sharedMaterials = sourceRenderer.sharedMaterials;
+                presentationRenderer.shadowCastingMode = sourceRenderer.shadowCastingMode;
+                presentationRenderer.receiveShadows = sourceRenderer.receiveShadows;
+            }
+
+            float meshDiameter = Mathf.Max(sourceMesh.bounds.size.x,
+                sourceMesh.bounds.size.y, sourceMesh.bounds.size.z);
+            arenaFeaturePresentation.transform.localScale = Vector3.one *
+                (meshDiameter > 0.0001f ? arenaFeatureDiameter / meshDiameter : 1f);
+            arenaFeatureRenderer = presentationRenderer;
+            return;
+        }
+
+        CreateFallbackArenaFeature();
+    }
+
+    private void CreateFallbackArenaFeature()
+    {
+        arenaFeaturePresentation = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        arenaFeaturePresentation.name = "Arena Blood Orb (Presentation Fallback)";
+        arenaFeaturePresentation.transform.position = arenaFeatureFallbackPosition;
+        arenaFeaturePresentation.transform.localScale = Vector3.one * (arenaFeatureDiameter * 0.5f);
+
+        Collider presentationCollider = arenaFeaturePresentation.GetComponent<Collider>();
+        if (presentationCollider != null)
+        {
+            presentationCollider.enabled = false;
+            Destroy(presentationCollider);
+        }
+
+        arenaFeatureRenderer = arenaFeaturePresentation.GetComponent<Renderer>();
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit") ??
+                        Shader.Find("Standard");
+        if (shader == null || arenaFeatureRenderer == null) return;
+
+        arenaFeatureRuntimeMaterial = new Material(shader)
+        {
+            name = "Arena Blood Orb Runtime Material",
+            color = new Color(0.32f, 0.005f, 0.025f, 1f)
+        };
+        if (arenaFeatureRuntimeMaterial.HasProperty("_BaseColor"))
+            arenaFeatureRuntimeMaterial.SetColor("_BaseColor",
+                new Color(0.32f, 0.005f, 0.025f, 1f));
+        arenaFeatureRuntimeMaterial.EnableKeyword("_EMISSION");
+        if (arenaFeatureRuntimeMaterial.HasProperty("_EmissionColor"))
+            arenaFeatureRuntimeMaterial.SetColor("_EmissionColor",
+                new Color(0.42f, 0.008f, 0.035f, 1f));
+        arenaFeatureRenderer.sharedMaterial = arenaFeatureRuntimeMaterial;
+    }
+
+    private void ReleaseArenaFeaturePresentation()
+    {
+        if (arenaFeaturePresentation != null)
+        {
+            if (Application.isPlaying) Destroy(arenaFeaturePresentation);
+            else DestroyImmediate(arenaFeaturePresentation);
+            arenaFeaturePresentation = null;
+        }
+
+        if (arenaFeatureRuntimeMaterial != null)
+        {
+            if (Application.isPlaying) Destroy(arenaFeatureRuntimeMaterial);
+            else DestroyImmediate(arenaFeatureRuntimeMaterial);
+            arenaFeatureRuntimeMaterial = null;
+        }
+    }
+
+    private static bool IsArenaFeature(Renderer renderer)
+    {
+        if (renderer == null) return false;
+        if (renderer.name.Contains("Arena Blood Orb") ||
+            renderer.transform.root.name.Contains("Arena Blood Orb")) return true;
+        foreach (Material material in renderer.sharedMaterials)
+        {
+            if (material == null) continue;
+            string materialName = material.name.ToLowerInvariant();
+            if (materialName.Contains("bloodshpare") || materialName.Contains("bloodsphere"))
+                return true;
+        }
+        return false;
     }
 
     private void BeginOccluderFade(Renderer renderer)
@@ -296,7 +517,48 @@ public sealed class MobaCamera : MonoBehaviour
             if (state == null) return;
             fadingOccluders.Add(renderer, state);
         }
-        state.Target = occludedAlpha;
+        state.Target = FadeAlphaFor(renderer);
+    }
+
+    private float FadeAlphaFor(Renderer renderer)
+    {
+        if (renderer == null) return occludedAlpha;
+        // Si la esfera cruza la línea de visión sigue siendo reconocible, pero
+        // se vuelve translúcida antes de tapar a los combatientes.
+        if (IsArenaFeature(renderer)) return 0.55f;
+        string rendererName = renderer.name.ToLowerInvariant();
+        // El mesh Tree también contiene la esfera roja que da identidad a la
+        // arena. Se vuelve marca de agua cuando obstruye, pero nunca desaparece.
+        bool centralTree = rendererName == "tree" ||
+                           renderer.transform.root.name.ToLowerInvariant()
+                               .Contains("arbol de la abundancia");
+        return centralTree ? treeOccludedAlpha : occludedAlpha;
+    }
+
+    private void UpdateManualZoom(bool enabledForCurrentView)
+    {
+        if (!Application.isPlaying || !enabledForCurrentView) return;
+
+        float delta = Input.mouseScrollDelta.y;
+        if (Input.touchCount == 2)
+        {
+            Touch first = Input.GetTouch(0);
+            Touch second = Input.GetTouch(1);
+            float pinchDistance = Vector2.Distance(first.position, second.position);
+            if (previousPinchDistance > 0f)
+                delta += (pinchDistance - previousPinchDistance) / Mathf.Max(35f, Screen.dpi * 0.35f);
+            previousPinchDistance = pinchDistance;
+        }
+        else
+        {
+            previousPinchDistance = -1f;
+        }
+
+        if (Mathf.Abs(delta) <= 0.001f) return;
+        requestedUnlockedDistance = Mathf.Clamp(
+            requestedUnlockedDistance - delta * manualZoomSpeed,
+            minimumUnlockedDistance,
+            maximumUnlockedDistance);
     }
 
     private static OccluderFade CreateFadeState(Renderer renderer)
@@ -425,6 +687,9 @@ public sealed class MobaCamera : MonoBehaviour
 
     private void OnDisable()
     {
+        ReleaseArenaFeaturePresentation();
+        arenaFeaturePrepared = false;
+        arenaFeatureRenderer = null;
         foreach (OccluderFade state in fadingOccluders.Values)
         {
             if (state.Renderer != null)

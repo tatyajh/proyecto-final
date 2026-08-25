@@ -9,6 +9,10 @@ public sealed class CombatAlertAudioController : MonoBehaviour
 {
     private const float CriticalThreshold = 0.25f;
     private const float CriticalRearmThreshold = 0.40f;
+    private const float ApproachWarningRadius = 15f;
+    private const float ApproachRearmRadius = 19f;
+    private const float MinimumClosingSpeed = 0.12f;
+    private const float SustainedApproachSeconds = 0.25f;
 
     private PlayerController owner;
     private AudioSource source;
@@ -42,11 +46,15 @@ public sealed class CombatAlertAudioController : MonoBehaviour
         lowHealthClip = Resources.Load<AudioClip>("Audio/SFX/low_health");
         defeatClip = Resources.Load<AudioClip>("Audio/SFX/game_over");
         victoryClip = Resources.Load<AudioClip>("Audio/SFX/victory");
+        if (approachClip != null && approachClip.loadState == AudioDataLoadState.Unloaded)
+            approachClip.LoadAudioData();
 
         source = gameObject.AddComponent<AudioSource>();
         source.playOnAwake = false;
         source.loop = false;
         source.spatialBlend = 0f;
+        source.priority = 16;
+        source.ignoreListenerPause = true;
         source.outputAudioMixerGroup = AudioCatalog.SfxGroup;
     }
 
@@ -82,7 +90,7 @@ public sealed class CombatAlertAudioController : MonoBehaviour
         nextSampleAt = now + 0.1f;
         PlayerController nearest = FindNearestEnemy(out float nearestDistance);
 
-        if (nearest == null || nearestDistance > 16f)
+        if (nearest == null || nearestDistance > ApproachRearmRadius)
         {
             approachArmed = true;
             approachingFor = 0f;
@@ -98,7 +106,7 @@ public sealed class CombatAlertAudioController : MonoBehaviour
             previousSampleAt = now;
             // El duelo local empieza dentro del radio de aviso. Esa entrada
             // inicial también debe oírse aunque el bot tarde en dar su paso.
-            approachingFor = nearestDistance <= 12f ? 0.35f : 0f;
+            approachingFor = 0f;
             return;
         }
 
@@ -112,14 +120,15 @@ public sealed class CombatAlertAudioController : MonoBehaviour
         previousEnemyPosition = nearest.transform.position;
         previousSampleAt = now;
 
-        if (approachArmed && nearestDistance <= 12f &&
-            (closingSpeed >= 0.20f || nearestDistance <= 10.5f))
+        if (approachArmed && nearestDistance <= ApproachWarningRadius &&
+            (closingSpeed >= MinimumClosingSpeed || nearestDistance <= 10.5f))
             approachingFor += deltaTime;
         else
             approachingFor = 0f;
 
-        if (!approachArmed || approachingFor < 0.4f || now < approachAllowedAt || source.isPlaying) return;
-        PlayPriority(approachClip, 0.85f, false);
+        if (!approachArmed || approachingFor < SustainedApproachSeconds ||
+            now < approachAllowedAt || source.isPlaying) return;
+        PlayPriority(approachClip, 1f, false);
         approachAllowedAt = now + (approachClip != null ? approachClip.length : 8f);
         approachingFor = 0f;
         approachArmed = false;

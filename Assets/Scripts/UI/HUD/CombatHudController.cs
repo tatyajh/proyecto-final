@@ -24,6 +24,8 @@ public sealed class CombatHudController : MonoBehaviour
     private TMP_Text teamLabel;
     private TMP_Text statusLabel;
     private TMP_Text arenaStatusLabel;
+    private RectTransform budIndicator;
+    private TMP_Text budIndicatorLabel;
     private GameObject confirmationPanel;
     private TMP_Text confirmationWarning;
     private GameObject resultPanel;
@@ -48,12 +50,16 @@ public sealed class CombatHudController : MonoBehaviour
     private static Sprite modalFrameSprite;
     private static Sprite hudButtonFrameSprite;
     private static Sprite controlHintFrameSprite;
+    private static Sprite runtimeCircleSprite;
 
     private sealed class AbilityOverlay
     {
         public GameObject Root;
         public Image Fill;
-        public TMP_Text Label;
+        public TMP_Text KeyLabel;
+        public TMP_Text CaptionLabel;
+        public TMP_Text AbilityNameLabel;
+        public TMP_Text CooldownLabel;
         public float Duration;
         public string Key;
     }
@@ -105,12 +111,14 @@ public sealed class CombatHudController : MonoBehaviour
         exit.onClick.AddListener(player.RequestExit);
 
         RectTransform identity = CreatePanel(root, "Player status", new Vector2(0f, -22f),
-            new Vector2(470f, 122f), TextAnchor.UpperCenter, Panel);
-        nameLabel = CreateText(identity, "Name", string.Empty, 36, Gold, FontStyles.Bold);
-        Anchor(nameLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -8f), new Vector2(440f, 46f));
+            new Vector2(520f, 146f), TextAnchor.UpperCenter, Panel);
+        CreateBorder(identity);
+        nameLabel = CreateText(identity, "Character", string.Empty, 40, Gold, FontStyles.Bold);
+        Anchor(nameLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -10f), new Vector2(486f, 54f));
+        ConfigureEssentialLabel(nameLabel, 40f);
 
-        RectTransform healthTrack = CreatePanel(identity, "Health", new Vector2(0f, -62f),
-            new Vector2(400f, 32f), TextAnchor.UpperCenter, new Color(0.04f, 0.025f, 0.035f, 0.95f));
+        RectTransform healthTrack = CreatePanel(identity, "Health", new Vector2(0f, -78f),
+            new Vector2(430f, 36f), TextAnchor.UpperCenter, new Color(0.04f, 0.025f, 0.035f, 0.95f));
         healthFill = CreateImage(healthTrack, "Fill", new Color(0.27f, 0.72f, 0.39f, 1f));
         healthFill.rectTransform.anchorMin = new Vector2(0f, 0f);
         healthFill.rectTransform.anchorMax = new Vector2(1f, 1f);
@@ -119,6 +127,7 @@ public sealed class CombatHudController : MonoBehaviour
         healthFill.rectTransform.offsetMax = new Vector2(-3f, -3f);
         healthLabel = CreateText(healthTrack, "Health value", string.Empty, 30, Ivory, FontStyles.Bold);
         Stretch(healthLabel.rectTransform);
+        ConfigureEssentialLabel(healthLabel, 30f);
         AddHealthFrame(healthTrack);
         nameLabel.transform.SetAsLastSibling();
 
@@ -132,6 +141,22 @@ public sealed class CombatHudController : MonoBehaviour
             new Color(0.92f, 0.42f, 0.48f), FontStyles.Bold);
         Anchor(arenaStatusLabel.rectTransform, new Vector2(0.5f, 1f),
             new Vector2(0f, -252f), new Vector2(820f, 42f));
+
+        budIndicator = CreatePanel(root, "Corrupted bud pointer", Vector2.zero,
+            new Vector2(330f, 68f), TextAnchor.MiddleCenter, MenuTheme.WithAlpha(MenuTheme.HudAshDark, 0.92f));
+        Sprite pointerFrame = HudButtonFrameSprite();
+        if (pointerFrame != null)
+        {
+            Image image = budIndicator.GetComponent<Image>();
+            image.sprite = pointerFrame;
+            image.type = Image.Type.Sliced;
+            image.color = Color.white;
+        }
+        budIndicatorLabel = CreateText(budIndicator, "Bud pointer label", string.Empty, 24, Gold, FontStyles.Bold);
+        Stretch(budIndicatorLabel.rectTransform);
+        budIndicatorLabel.rectTransform.offsetMin = new Vector2(34f, 10f);
+        budIndicatorLabel.rectTransform.offsetMax = new Vector2(-34f, -10f);
+        budIndicator.gameObject.SetActive(false);
 
         BuildConfirmation(root);
         BuildResult(root);
@@ -207,15 +232,15 @@ public sealed class CombatHudController : MonoBehaviour
         if (training == null) return;
 
         RectTransform panel = CreatePanel(root, "Training opponent", new Vector2(-26f, -24f),
-            new Vector2(430f, 122f), TextAnchor.UpperRight, Panel);
+            new Vector2(500f, 146f), TextAnchor.UpperRight, Panel);
         trainingPanel = panel.gameObject;
         CreateBorder(panel);
         opponentNameLabel = CreateText(panel, "Opponent name",
-            GameLocalization.Choose("RIVAL · PREPARANDO", "RIVAL · PREPARING"), 34, Gold, FontStyles.Bold);
-        Anchor(opponentNameLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -8f), new Vector2(400f, 46f));
+            GameLocalization.Choose("RIVAL · PREPARANDO", "RIVAL · PREPARING"), 36, Gold, FontStyles.Bold);
+        Anchor(opponentNameLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -10f), new Vector2(468f, 48f));
 
-        RectTransform healthTrack = CreatePanel(panel, "Opponent health", new Vector2(0f, -62f),
-            new Vector2(370f, 32f), TextAnchor.UpperCenter, new Color(0.04f, 0.025f, 0.035f, 0.95f));
+        RectTransform healthTrack = CreatePanel(panel, "Opponent health", new Vector2(0f, -78f),
+            new Vector2(420f, 36f), TextAnchor.UpperCenter, new Color(0.04f, 0.025f, 0.035f, 0.95f));
         opponentHealthFill = CreateImage(healthTrack, "Fill", new Color(0.78f, 0.22f, 0.22f, 1f));
         opponentHealthFill.rectTransform.anchorMin = new Vector2(0f, 0f);
         opponentHealthFill.rectTransform.anchorMax = new Vector2(1f, 1f);
@@ -281,16 +306,18 @@ public sealed class CombatHudController : MonoBehaviour
         hint.rectTransform.offsetMax = new Vector2(-54f, -12f);
         inputHintGroup = help.gameObject.AddComponent<CanvasGroup>();
 
-        basicOverlay = CreateDesktopAbilityOverlay(root, "Q", new Vector2(-266f, 104f));
-        ultimateOverlay = CreateDesktopAbilityOverlay(root, "E", new Vector2(-26f, 104f));
+        basicOverlay = CreateDesktopAbilityOverlay(root, "Q", new Vector2(-310f, 82f));
+        ultimateOverlay = CreateDesktopAbilityOverlay(root, "E", new Vector2(-18f, 82f));
     }
 
     private AbilityOverlay CreateDesktopAbilityOverlay(RectTransform root, string key, Vector2 position)
     {
         RectTransform panel = CreatePanel(root, $"{key} ability", position,
-            new Vector2(220f, 190f), TextAnchor.LowerRight, Plum);
+            new Vector2(280f, 292f), TextAnchor.LowerRight, Color.clear);
+        RectTransform face = CreatePanel(panel, "Ability face", new Vector2(0f, 64f),
+            new Vector2(188f, 188f), TextAnchor.MiddleCenter, Plum);
         Sprite frame = HudAbilitySprite();
-        Image background = panel.GetComponent<Image>();
+        Image background = face.GetComponent<Image>();
         if (frame != null)
         {
             background.sprite = frame;
@@ -299,24 +326,57 @@ public sealed class CombatHudController : MonoBehaviour
             background.preserveAspect = true;
         }
 
-        Image fill = CreateImage(panel, "Cooldown fill", new Color(0.04f, 0.025f, 0.05f, 0.72f));
+        Image fill = CreateImage(face, "Cooldown fill", new Color(0.015f, 0.012f, 0.02f, 0.76f));
         Stretch(fill.rectTransform);
-        fill.rectTransform.offsetMin = new Vector2(24f, 22f);
-        fill.rectTransform.offsetMax = new Vector2(-24f, -22f);
-        fill.sprite = RuntimeSprite();
+        fill.rectTransform.offsetMin = new Vector2(22f, 22f);
+        fill.rectTransform.offsetMax = new Vector2(-22f, -22f);
+        fill.sprite = RuntimeCircleSprite();
         fill.type = Image.Type.Filled;
         fill.fillMethod = Image.FillMethod.Radial360;
         fill.fillOrigin = 2;
         fill.fillClockwise = false;
         fill.raycastTarget = false;
 
-        TMP_Text label = CreateText(panel, "Ability", key, 38, Ivory, FontStyles.Bold);
-        Stretch(label.rectTransform);
-        label.rectTransform.offsetMin = new Vector2(22f, 22f);
-        label.rectTransform.offsetMax = new Vector2(-22f, -22f);
-        label.enableAutoSizing = false;
-        label.raycastTarget = false;
-        return new AbilityOverlay { Root = panel.gameObject, Fill = fill, Label = label, Key = key, Duration = 1f };
+        TMP_Text keyLabel = CreateText(face, "Key", key, 66, Color.white, FontStyles.Bold);
+        Anchor(keyLabel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 18f), new Vector2(150f, 92f));
+        ConfigureEssentialLabel(keyLabel, 66f);
+        keyLabel.outlineWidth = 0.22f;
+        keyLabel.outlineColor = new Color32(8, 6, 10, 255);
+        TMP_Text cooldown = CreateText(face, "Cooldown seconds", string.Empty, 30, Color.white, FontStyles.Bold);
+        Anchor(cooldown.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -48f), new Vector2(136f, 40f));
+        ConfigureEssentialLabel(cooldown, 30f);
+        cooldown.outlineWidth = 0.2f;
+        cooldown.outlineColor = new Color32(8, 6, 10, 255);
+        TMP_Text caption = CreateText(face, "Ability type", string.Empty, 30, Gold, FontStyles.Bold);
+        Anchor(caption.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -18f), new Vector2(150f, 40f));
+        // En PC la tecla y el cooldown pertenecen al círculo. El nombre
+        // completo debajo ya explica la habilidad y evita una tercera línea
+        // compitiendo dentro del medallón.
+        caption.gameObject.SetActive(false);
+
+        RectTransform namePlate = CreatePanel(panel, "Ability name plate", new Vector2(0f, 0f),
+            new Vector2(280f, 84f), TextAnchor.LowerCenter,
+            MenuTheme.WithAlpha(MenuTheme.HudPanel, 0.9f));
+        CreateBorder(namePlate);
+        TMP_Text abilityName = CreateText(namePlate, "Ability name", string.Empty, 27, Ivory, FontStyles.Bold);
+        Stretch(abilityName.rectTransform);
+        abilityName.rectTransform.offsetMin = new Vector2(16f, 8f);
+        abilityName.rectTransform.offsetMax = new Vector2(-16f, -8f);
+        abilityName.margin = Vector4.zero;
+        abilityName.enableAutoSizing = true;
+        abilityName.fontSizeMin = 22f;
+        abilityName.fontSizeMax = 27f;
+        abilityName.textWrappingMode = TextWrappingModes.Normal;
+        abilityName.overflowMode = TextOverflowModes.Overflow;
+        abilityName.outlineWidth = 0.12f;
+        abilityName.outlineColor = new Color32(8, 6, 10, 255);
+        fill.transform.SetAsFirstSibling();
+        keyLabel.transform.SetAsLastSibling();
+        caption.transform.SetAsLastSibling();
+        cooldown.transform.SetAsLastSibling();
+        return new AbilityOverlay { Root = panel.gameObject, Fill = fill, KeyLabel = keyLabel,
+            CaptionLabel = caption, AbilityNameLabel = abilityName, CooldownLabel = cooldown,
+            Key = key, Duration = 1f };
     }
 
     private void BindAbilityOverlays()
@@ -356,18 +416,29 @@ public sealed class CombatHudController : MonoBehaviour
         Stretch(fill.rectTransform);
         fill.rectTransform.offsetMin = new Vector2(18f, 18f);
         fill.rectTransform.offsetMax = new Vector2(-18f, -18f);
-        fill.sprite = RuntimeSprite();
+        fill.sprite = RuntimeCircleSprite();
         fill.type = Image.Type.Filled;
         fill.fillMethod = Image.FillMethod.Radial360;
         fill.fillOrigin = 2;
         fill.fillClockwise = false;
         fill.raycastTarget = false;
 
-        TMP_Text label = CreateText(rect, "Ability", key, 26, Ivory, FontStyles.Bold);
-        Stretch(label.rectTransform);
-        label.raycastTarget = false;
+        TMP_Text keyLabel = CreateText(rect, "Key", key, 34, Ivory, FontStyles.Bold);
+        Anchor(keyLabel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 12f), new Vector2(86f, 46f));
+        ConfigureEssentialLabel(keyLabel, 34f);
+        TMP_Text cooldown = CreateText(rect, "Cooldown seconds", string.Empty, 21, Ivory, FontStyles.Bold);
+        Anchor(cooldown.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -27f), new Vector2(92f, 28f));
+        ConfigureEssentialLabel(cooldown, 21f);
+        TMP_Text caption = CreateText(rect, "Ability type", string.Empty, 19, Gold, FontStyles.Bold);
+        Anchor(caption.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, -4f), new Vector2(128f, 28f));
+        caption.margin = Vector4.zero;
+        fill.transform.SetAsFirstSibling();
+        keyLabel.transform.SetAsLastSibling();
+        cooldown.transform.SetAsLastSibling();
+        caption.transform.SetAsLastSibling();
 
-        return new AbilityOverlay { Root = root, Fill = fill, Label = label, Duration = duration, Key = key };
+        return new AbilityOverlay { Root = root, Fill = fill, KeyLabel = keyLabel,
+            CaptionLabel = caption, CooldownLabel = cooldown, Duration = duration, Key = key };
     }
 
     private void Update()
@@ -378,15 +449,21 @@ public sealed class CombatHudController : MonoBehaviour
             return;
         }
 
-        string playerName = player.PlayerDisplayName;
-        if (string.IsNullOrWhiteSpace(playerName) || playerName == "Player")
-            playerName = CharacterCatalog.NameOf(player.SelectedCharacterIndex);
+        string characterName = CharacterCatalog.NameOf(player.SelectedCharacterIndex).ToUpperInvariant();
+        string playerAlias = player.PlayerDisplayName;
         nameLabel.text = training != null
-            ? $"{GameLocalization.Choose("TÚ", "YOU")} · {playerName.ToUpperInvariant()}"
-            : $"{GameLocalization.Choose("JUGADOR", "PLAYER")} · {playerName.ToUpperInvariant()}";
+            ? $"{GameLocalization.Choose("TÚ", "YOU")} · {characterName}"
+            : string.IsNullOrWhiteSpace(playerAlias) ||
+              string.Equals(playerAlias, "Player", System.StringComparison.OrdinalIgnoreCase)
+                ? characterName
+                : $"{playerAlias.ToUpperInvariant()} · {characterName}";
+        // El alias queda integrado en el encabezado principal. Así nunca hay
+        // una barra verde anónima ni una segunda línea frágil en resoluciones bajas.
         nameLabel.gameObject.SetActive(true);
+        nameLabel.transform.SetAsLastSibling();
         float health = Mathf.Clamp01(player.CurrentHealth / (float)PlayerController.MaxHealth);
-        healthLabel.text = $"{GameLocalization.Choose("VIDA", "HEALTH")}  {Mathf.CeilToInt(health * 100f)}%";
+        healthLabel.text = string.Empty;
+        healthLabel.gameObject.SetActive(false);
         healthFill.rectTransform.anchorMax = new Vector2(health, 1f);
         healthFill.color = health > 0.35f ? new Color(0.27f, 0.72f, 0.39f) : new Color(0.78f, 0.22f, 0.22f);
 
@@ -402,6 +479,7 @@ public sealed class CombatHudController : MonoBehaviour
             : string.Empty;
         arenaStatusLabel.text = arenaStatus;
         arenaStatusLabel.gameObject.SetActive(!string.IsNullOrWhiteSpace(arenaStatus));
+        UpdateBudIndicator();
 
         UpdateAbility(basicOverlay, player.BasicCooldownRemaining, player.BasicCooldownDuration, player.BasicAbilityName);
         UpdateAbility(ultimateOverlay, player.UltimateCooldownRemaining, player.UltimateCooldownDuration, player.UltimateAbilityName);
@@ -457,9 +535,10 @@ public sealed class CombatHudController : MonoBehaviour
             if (visible)
             {
                 opponentNameLabel.text = $"{GameLocalization.Choose("RIVAL", "RIVAL")} · " +
-                                         opponent.PlayerDisplayName.ToUpperInvariant();
+                    CharacterCatalog.NameOf(opponent.SelectedCharacterIndex).ToUpperInvariant();
                 float opponentHealth = Mathf.Clamp01(opponent.CurrentHealth / (float)PlayerController.MaxHealth);
-                opponentHealthLabel.text = $"{GameLocalization.Choose("VIDA", "HEALTH")}  {Mathf.CeilToInt(opponentHealth * 100f)}%";
+                opponentHealthLabel.text = string.Empty;
+                opponentHealthLabel.gameObject.SetActive(false);
                 opponentHealthFill.rectTransform.anchorMax = new Vector2(opponentHealth, 1f);
             }
         }
@@ -484,6 +563,37 @@ public sealed class CombatHudController : MonoBehaviour
         inputHintGroup.interactable = false;
     }
 
+    private void UpdateBudIndicator()
+    {
+        ArenaPowerUpManager manager = ArenaPowerUpManager.Instance;
+        Camera camera = Camera.main;
+        RectTransform canvasRect = hudRoot != null ? hudRoot.transform as RectTransform : null;
+        if (manager == null || camera == null || canvasRect == null ||
+            !manager.TryGetActiveBud(out Vector3 worldPosition, out int hits))
+        {
+            if (budIndicator != null) budIndicator.gameObject.SetActive(false);
+            return;
+        }
+
+        Vector3 screen = camera.WorldToScreenPoint(worldPosition);
+        if (screen.z < 0f)
+        {
+            screen.x = Screen.width - screen.x;
+            screen.y = Screen.height - screen.y;
+        }
+        bool visible = screen.z > 0f && screen.x >= 0f && screen.x <= Screen.width &&
+                       screen.y >= 0f && screen.y <= Screen.height;
+        screen.x = Mathf.Clamp(screen.x, 185f, Screen.width - 185f);
+        screen.y = Mathf.Clamp(screen.y, 120f, Screen.height - 120f);
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, screen, null, out Vector2 local);
+        budIndicator.anchoredPosition = local;
+        budIndicator.gameObject.SetActive(true);
+
+        string arrow = visible ? string.Empty : screen.x <= 190f ? "<  " : screen.x >= Screen.width - 190f ? "  >" : "  ^";
+        budIndicatorLabel.text = GameLocalization.Choose(
+            $"{arrow}CAPULLO · {hits} GOLPES", $"{arrow}BUD · {hits} HITS");
+    }
+
     private static void UpdateAbility(AbilityOverlay overlay, float remaining, float duration, string abilityName)
     {
         if (overlay == null) return;
@@ -492,9 +602,11 @@ public sealed class CombatHudController : MonoBehaviour
         string caption = overlay.Key == "Q"
             ? GameLocalization.Choose("BÁSICA", "BASIC")
             : GameLocalization.Choose("ULTI", "ULT");
-        overlay.Label.text = remaining > 0f
-            ? $"<size=115%>{overlay.Key}</size>\n<size=62%>{remaining:0.0} s</size>"
-            : $"<size=115%>{overlay.Key}</size>\n<size=62%>{caption}</size>";
+        overlay.KeyLabel.text = overlay.Key;
+        overlay.CaptionLabel.text = caption;
+        if (overlay.AbilityNameLabel != null)
+            overlay.AbilityNameLabel.text = string.IsNullOrWhiteSpace(abilityName) ? string.Empty : abilityName.ToUpperInvariant();
+        overlay.CooldownLabel.text = remaining > 0f ? $"{remaining:0.0}s" : string.Empty;
     }
 
     private void OnDestroy()
@@ -640,6 +752,17 @@ public sealed class CombatHudController : MonoBehaviour
         return text;
     }
 
+    private static void ConfigureEssentialLabel(TMP_Text text, float fontSize)
+    {
+        if (text == null) return;
+        text.margin = Vector4.zero;
+        text.enableAutoSizing = false;
+        text.fontSize = fontSize;
+        text.overflowMode = TextOverflowModes.Overflow;
+        text.textWrappingMode = TextWrappingModes.NoWrap;
+        text.raycastTarget = false;
+    }
+
     private static Image CreateImage(Transform parent, string name, Color color)
     {
         GameObject go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
@@ -681,8 +804,30 @@ public sealed class CombatHudController : MonoBehaviour
         rect.offsetMax = Vector2.zero;
     }
 
-    private static Sprite RuntimeSprite()
+    private static Sprite RuntimeCircleSprite()
     {
-        return Sprite.Create(Texture2D.whiteTexture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
+        if (runtimeCircleSprite != null) return runtimeCircleSprite;
+        const int size = 128;
+        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            name = "Runtime cooldown circle",
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = FilterMode.Bilinear
+        };
+        Color32[] pixels = new Color32[size * size];
+        Vector2 center = new Vector2((size - 1) * 0.5f, (size - 1) * 0.5f);
+        float radius = size * 0.48f;
+        for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++)
+        {
+            float alpha = Mathf.Clamp01(radius - Vector2.Distance(new Vector2(x, y), center));
+            pixels[y * size + x] = new Color(1f, 1f, 1f, alpha);
+        }
+        texture.SetPixels32(pixels);
+        texture.Apply(false, true);
+        runtimeCircleSprite = Sprite.Create(texture, new Rect(0f, 0f, size, size),
+            new Vector2(0.5f, 0.5f), size);
+        runtimeCircleSprite.name = "Runtime cooldown circle";
+        return runtimeCircleSprite;
     }
 }

@@ -8,7 +8,8 @@ using UnityEngine.AI;
 
 /// <summary>
 /// Smoke test ejecutable en batch: abre Movement directamente, instancia los
-/// seis personajes y lanza ambas habilidades de cada uno.
+/// seis personajes y lanza ambas habilidades de cada uno. La entrada diferida
+/// evita que la integración inicial de la escena descarte el cambio a Play.
 /// </summary>
 [InitializeOnLoad]
 public static class MovementCombatSmokeTool
@@ -36,7 +37,9 @@ public static class MovementCombatSmokeTool
         exitCode = 0;
         EditorSceneManager.OpenScene(MovementScene);
         EditorSceneManager.playModeStartScene = null;
-        EditorApplication.isPlaying = true;
+        // OpenScene todavía procesa integración de assets en proyectos grandes.
+        // Iniciar Play en el mismo callback podía perderse silenciosamente.
+        EditorApplication.delayCall += () => EditorApplication.isPlaying = true;
     }
 
     private static void OnPlayModeChanged(PlayModeStateChange state)
@@ -114,7 +117,14 @@ public static class MovementCombatSmokeTool
         if (animator == null || animator.runtimeAnimatorController == null)
             failures.Add($"{name} no tiene Animator Controller en Movement.");
 
-        Renderer[] visible = Array.FindAll(renderers,
+        // El rig también contiene telegráficos y renderers auxiliares a ras de
+        // suelo. Para validar el pivote se miden únicamente los renderers del
+        // modelo importado, que es lo que el jugador percibe como flotando.
+        Transform visualRoot = player.transform.Find($"Model {name}");
+        Renderer[] groundingRenderers = visualRoot != null
+            ? visualRoot.GetComponentsInChildren<Renderer>(true)
+            : renderers;
+        Renderer[] visible = Array.FindAll(groundingRenderers,
             renderer => renderer.enabled && renderer.gameObject.activeInHierarchy &&
                         (renderer is SkinnedMeshRenderer || renderer is MeshRenderer));
         if (visible.Length > 0)
@@ -126,7 +136,8 @@ public static class MovementCombatSmokeTool
                     8f, NavMesh.AllAreas))
                 expectedGroundY = groundHit.position.y;
             float signedGroundOffset = bounds.min.y - expectedGroundY;
-            if (Mathf.Abs(signedGroundOffset) > 0.15f)
+            Debug.Log($"[MovementSmoke] {name}: desfase visual {signedGroundOffset:+0.000;-0.000}.");
+            if (Mathf.Abs(signedGroundOffset) > 0.10f)
                 failures.Add($"{name} conserva un desfase vertical de {signedGroundOffset:+0.000;-0.000} unidades.");
         }
 

@@ -1412,7 +1412,9 @@ MonoBehaviour:
   useSavedCharacter: 1
   initialCharacterIndex: 3
   enableDeveloperCharacterSwitch: 1
+  duelCenter: {x: 48, y: 0, z: -6}
   duelSeparation: 18
+  validatedSpawnRadius: 13
 --- !u!4 &1036657765
 Transform:
   m_ObjectHideFlags: 0
@@ -1815,7 +1817,7 @@ Transform:
   m_GameObject: {fileID: 1486059107}
   serializedVersion: 2
   m_LocalRotation: {x: 0.39566734, y: -0.3869408, z: 0.18872364, w: 0.8112383}
-  m_LocalPosition: {x: 68.181435, y: 39.944405, z: -34.723038}
+  m_LocalPosition: {x: 61.4, y: 22.1, z: -16.8}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1833,14 +1835,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ca696f5753e555a49bb601ef560f0ab4, type: 3}
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::MobaCamera
-  target: {fileID: 140860596}
+  target: {fileID: 0}
   pitch: 52
-  yaw: -51
+  yaw: 129
   distance: 38
-  targetOffset: {x: 0, y: 3.2, z: 0}
+  targetOffset: {x: 0, y: 1, z: 0}
   unlockedDistance: 38
-  minimumLockedDistance: 18
-  maximumLockedDistance: 34
+  minimumUnlockedDistance: 20
+  maximumUnlockedDistance: 48
+  minimumLockedDistance: 22
+  maximumLockedDistance: 32
+  manualZoomSpeed: 3
   yawDeadZone: 8
   maximumYawSpeed: 45
   lockedTargetWeight: 0.48
@@ -1849,10 +1854,15 @@ MonoBehaviour:
   zoomSpeed: 8
   fadeOccluders: 1
   occlusionRadius: 0.42
-  avoidObstacles: 0
-  collisionRadius: 0.55
-  collisionPadding: 0.35
-  minimumDistance: 3
+  visualOcclusionRefresh: 0.18
+  occludedAlpha: 0.12
+  treeOccludedAlpha: 0.22
+  occlusionFadeSpeed: 5
+  arenaFeatureWeight: 0.26
+  arenaFeatureVerticalWeight: 0.52
+  arenaFeatureMaximumDistance: 48
+  arenaFeatureDiameter: 10
+  arenaFeatureFallbackPosition: {x: 64.1, y: 26.3, z: -27.1}
 --- !u!1 &1523085434
 GameObject:
   m_ObjectHideFlags: 0

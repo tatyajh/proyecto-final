@@ -6,6 +6,8 @@ using Fusion.Sockets;
 
 public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
 {
+    public static readonly Vector3 DefaultArenaCenter = new Vector3(48f, 0f, -6f);
+
     [Header("Network Prefabs")]
     [Tooltip("Arrastra aquí el Prefab de tu Cápsula con el NetworkObject")]
     [SerializeField] private NetworkPrefabRef playerPrefab;
@@ -15,7 +17,7 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
     [SerializeField] private Vector3 spawnPosition = new Vector3(48f, 0f, -6f);
 
     /// <summary>Centro de la arena, leído por PlayerController al recolocarse tras el balanceo.</summary>
-    public static Vector3 ArenaCenter { get; private set; } = new Vector3(48f, 0f, -6f);
+    public static Vector3 ArenaCenter { get; private set; } = DefaultArenaCenter;
 
     private NetworkRunner _runner;
     private bool _localSpawnInProgress;

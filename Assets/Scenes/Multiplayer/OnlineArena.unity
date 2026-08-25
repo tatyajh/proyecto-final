@@ -242,7 +242,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1e3fdca004f2d45fe8abbed571a8abd5, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshModifier
   m_SerializedVersion: 0
   m_OverrideArea: 1
@@ -404,7 +404,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 29e8c782c8f27bc428e1827d16418538, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
   agent: {fileID: 140860597}
   joystick: {fileID: 374754067}
@@ -424,6 +424,19 @@ MonoBehaviour:
   _TeamId: 0
   _TeamSlot: 0
   _CharacterIndex: 0
+  _MatchReady:
+    RawValue: 0
+  _NetworkMoving:
+    RawValue: 0
+  _ArenaSystemsInitialized:
+    RawValue: 0
+  _ArenaPickupMask: 0
+  _ArenaPickupTypes: 0
+  _ArenaPickupGeneration: 0
+  _ArenaBudMask: 0
+  _ArenaCorruptionActive:
+    RawValue: 0
+  _ArenaCorruptionProgress: 0
 --- !u!114 &140860599
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -434,14 +447,12 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 16a5609d427f9824cb4375517be71e67, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Gameplay.Combat.PlayerCombatController
   basicAttackJoystick: {fileID: 1934718003}
   ultimateJoystick: {fileID: 150929680}
   basicAimIndicator: {fileID: 425748418}
   ultimateAimIndicator: {fileID: 718271326}
-  attackRange: 5
-  ultimateRange: 8
 --- !u!114 &140860600
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -452,7 +463,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkObject
   SortKey: 653363847
   SendPriority: 1
@@ -512,7 +523,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 52d2157e3a0bdf94e88ccab213eaeaf9, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::UIScripts.AttackJoystick
   handle: {fileID: 1374754522}
   handleRange: 100
@@ -526,7 +537,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e19747de3f5aca642ab2be37e372fb86, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Outline
   m_EffectColor: {r: 0.8, g: 0.73333335, b: 0.2, a: 0.5647059}
   m_EffectDistance: {x: 20, y: 20}
@@ -541,7 +552,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
@@ -598,7 +609,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: dc42784cf147c0c48a680349fa168899, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.GraphicRaycaster
   m_IgnoreReversedGraphics: 1
   m_BlockingObjects: 0
@@ -615,7 +626,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.CanvasScaler
   m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
@@ -723,7 +734,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 12f8d417687dd6948b7e206cd440b14c, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::VirtualJoystick
   containerBackground: {fileID: 374754066}
   joystickHandle: {fileID: 699072686}
@@ -737,7 +748,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e19747de3f5aca642ab2be37e372fb86, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Outline
   m_EffectColor: {r: 0.14117648, g: 0.19215687, b: 0.32156864, a: 0.5}
   m_EffectDistance: {x: 20, y: 20}
@@ -752,7 +763,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
@@ -808,7 +819,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4f231c4fb786f3946a6b90b886c48677, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.EventSystems.StandaloneInputModule
   m_SendPointerHoverToParent: 1
   m_HorizontalAxis: Horizontal
@@ -828,7 +839,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 76c392e42b5098c458856cdf6ecaaaa1, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.EventSystems.EventSystem
   m_FirstSelected: {fileID: 0}
   m_sendNavigationEvents: 1
@@ -897,7 +908,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c4aae1eb8f3470f47a80e2aa61e61fbd, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Gameplay.Combat.SkillAimIndicator
   rangeIndicator: {fileID: 1523085434}
   directionIndicator: {fileID: 1642624816}
@@ -957,7 +968,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
   m_Color: {r: 0.8, g: 0.21568628, b: 0.21568628, a: 1}
@@ -1032,7 +1043,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
   m_Color: {r: 0.13737984, g: 0.19123624, b: 0.3207547, a: 1}
@@ -1102,7 +1113,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c4aae1eb8f3470f47a80e2aa61e61fbd, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Gameplay.Combat.SkillAimIndicator
   rangeIndicator: {fileID: 0}
   directionIndicator: {fileID: 0}
@@ -1230,7 +1241,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1e3fdca004f2d45fe8abbed571a8abd5, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshModifier
   m_SerializedVersion: 0
   m_OverrideArea: 1
@@ -1364,7 +1375,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: de9724366b6cd4e4b83f2aa41ef0dd40, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerSpawner
   playerPrefab:
     RawGuidValue: d382de709db6d4a1bb3a30a957c7d19c
@@ -1466,7 +1477,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6811416378397234015, guid: ee03f61c633fa8849a79100609d9bbe4, type: 3}
       propertyPath: m_NavMeshData
-      value:
+      value: 
       objectReference: {fileID: 23800000, guid: c01d70c2084c5a048b445c256d46c89f, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -1558,7 +1569,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
   m_Color: {r: 0.8, g: 0.73333335, b: 0.2, a: 1}
@@ -1709,7 +1720,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1e3fdca004f2d45fe8abbed571a8abd5, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshModifier
   m_SerializedVersion: 0
   m_OverrideArea: 1
@@ -1806,7 +1817,7 @@ Transform:
   m_GameObject: {fileID: 1486059107}
   serializedVersion: 2
   m_LocalRotation: {x: 0.39566734, y: -0.3869408, z: 0.18872364, w: 0.8112383}
-  m_LocalPosition: {x: 68.181435, y: 39.944405, z: -34.723038}
+  m_LocalPosition: {x: 61.4, y: 22.1, z: -16.8}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1822,16 +1833,19 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: ca696f5753e555a49bb601ef560f0ab4, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MobaCamera
-  target: {fileID: 140860596}
+  target: {fileID: 0}
   pitch: 52
-  yaw: -51
+  yaw: 129
   distance: 38
-  targetOffset: {x: 0, y: 3.2, z: 0}
+  targetOffset: {x: 0, y: 1, z: 0}
   unlockedDistance: 38
-  minimumLockedDistance: 18
-  maximumLockedDistance: 34
+  minimumUnlockedDistance: 20
+  maximumUnlockedDistance: 48
+  minimumLockedDistance: 22
+  maximumLockedDistance: 32
+  manualZoomSpeed: 3
   yawDeadZone: 8
   maximumYawSpeed: 45
   lockedTargetWeight: 0.48
@@ -1840,10 +1854,14 @@ MonoBehaviour:
   zoomSpeed: 8
   fadeOccluders: 1
   occlusionRadius: 0.42
-  avoidObstacles: 0
-  collisionRadius: 0.55
-  collisionPadding: 0.35
-  minimumDistance: 3
+  visualOcclusionRefresh: 0.18
+  occludedAlpha: 0.12
+  treeOccludedAlpha: 0.22
+  occlusionFadeSpeed: 5
+  arenaFeatureWeight: 0.26
+  arenaFeatureMaximumDistance: 48
+  arenaFeatureDiameter: 10
+  arenaFeatureFallbackPosition: {x: 64.1, y: 26.3, z: -27.1}
 --- !u!1 &1523085434
 GameObject:
   m_ObjectHideFlags: 0
@@ -2295,7 +2313,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1e3fdca004f2d45fe8abbed571a8abd5, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshModifier
   m_SerializedVersion: 0
   m_OverrideArea: 1
@@ -2355,7 +2373,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 52d2157e3a0bdf94e88ccab213eaeaf9, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::UIScripts.AttackJoystick
   handle: {fileID: 639870741}
   handleRange: 100
@@ -2369,7 +2387,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e19747de3f5aca642ab2be37e372fb86, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Outline
   m_EffectColor: {r: 0.8, g: 0.21568628, b: 0.21568628, a: 0.5}
   m_EffectDistance: {x: 20, y: 20}
@@ -2384,7 +2402,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}

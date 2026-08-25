@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Gameplay.Combat;
+using TMPro;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -46,6 +47,9 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
         public GameObject Root;
         public GameObject Bud;
         public Renderer BudRenderer;
+        public readonly List<Renderer> BudPetals = new List<Renderer>();
+        public TextMeshPro BudLabel;
+        public LineRenderer Beacon;
         public Transform Symbol;
         public SpriteRenderer SymbolRenderer;
         public LineRenderer Ring;
@@ -262,6 +266,21 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
         return found;
     }
 
+    public bool TryGetActiveBud(out Vector3 position, out int remainingHits)
+    {
+        position = Vector3.zero;
+        remainingHits = 0;
+        int mask = CurrentBudMask;
+        for (int i = 0; i < visuals.Length; i++)
+        {
+            if ((mask & (1 << i)) == 0) continue;
+            position = PedestalPosition(arenaCenter, i) + Vector3.up * 1.9f;
+            remainingHits = Mathf.Max(1, CurrentBudHealthAt(i));
+            return true;
+        }
+        return false;
+    }
+
     /// <summary>
     /// Los altares primero generan un capullo corrupto. Tres impactos válidos
     /// lo abren y revelan uno de los tres beneficios al azar.
@@ -376,15 +395,62 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             if (collider != null) Destroy(collider);
             SetMaterial(baseObject.GetComponent<Renderer>(), new Color(0.12f, 0.07f, 0.11f, 1f));
 
-            GameObject bud = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            GameObject bud = new GameObject("Capullo corrupto · golpéalo 3 veces");
             bud.name = "Capullo corrupto · golpéalo 3 veces";
             bud.transform.SetParent(root.transform, false);
-            bud.transform.localPosition = Vector3.up * 1.05f;
-            bud.transform.localScale = Vector3.one * 0.78f;
-            collider = bud.GetComponent<Collider>();
+            bud.transform.localPosition = Vector3.up * 1.36f;
+
+            GameObject bulb = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            bulb.name = "Núcleo visible del capullo";
+            bulb.transform.SetParent(bud.transform, false);
+            bulb.transform.localScale = new Vector3(1.25f, 1.55f, 1.25f);
+            collider = bulb.GetComponent<Collider>();
             if (collider != null) Destroy(collider);
-            Renderer budRenderer = bud.GetComponent<Renderer>();
+            Renderer budRenderer = bulb.GetComponent<Renderer>();
             SetMaterial(budRenderer, new Color(0.48f, 0.025f, 0.12f, 1f));
+
+            List<Renderer> petals = new List<Renderer>();
+            for (int petalIndex = 0; petalIndex < 6; petalIndex++)
+            {
+                float angle = petalIndex * 60f;
+                GameObject petal = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                petal.name = $"Pétalo corrupto {petalIndex + 1}";
+                petal.transform.SetParent(bud.transform, false);
+                petal.transform.localPosition = Quaternion.Euler(0f, angle, 0f) *
+                    new Vector3(0f, -0.25f, 0.68f);
+                petal.transform.localRotation = Quaternion.Euler(32f, angle, 0f);
+                petal.transform.localScale = new Vector3(0.62f, 1.18f, 0.28f);
+                Collider petalCollider = petal.GetComponent<Collider>();
+                if (petalCollider != null) Destroy(petalCollider);
+                Renderer petalRenderer = petal.GetComponent<Renderer>();
+                SetMaterial(petalRenderer, new Color(0.66f, 0.035f, 0.18f, 1f));
+                petals.Add(petalRenderer);
+            }
+
+            GameObject labelObject = new GameObject("Indicador del capullo", typeof(TextMeshPro));
+            labelObject.transform.SetParent(root.transform, false);
+            labelObject.transform.localPosition = Vector3.up * 3.45f;
+            TextMeshPro budLabel = labelObject.GetComponent<TextMeshPro>();
+            budLabel.text = GameLocalization.Choose("CAPULLO CORRUPTO\n3 GOLPES", "CORRUPTED BUD\n3 HITS");
+            budLabel.fontSize = 3.2f;
+            budLabel.alignment = TextAlignmentOptions.Center;
+            budLabel.color = new Color(1f, 0.78f, 0.48f, 1f);
+            budLabel.outlineWidth = 0.22f;
+            budLabel.outlineColor = new Color32(55, 3, 15, 255);
+            budLabel.rectTransform.sizeDelta = new Vector2(9f, 2.2f);
+
+            GameObject beaconObject = new GameObject("Haz del capullo");
+            beaconObject.transform.SetParent(root.transform, false);
+            LineRenderer beacon = beaconObject.AddComponent<LineRenderer>();
+            beacon.useWorldSpace = false;
+            beacon.positionCount = 2;
+            beacon.SetPosition(0, new Vector3(0f, 0.18f, 0f));
+            beacon.SetPosition(1, new Vector3(0f, 4.7f, 0f));
+            beacon.widthMultiplier = 0.07f;
+            Color beaconColor = new Color(0.95f, 0.08f, 0.28f, 0.62f);
+            beacon.startColor = beaconColor;
+            beacon.endColor = new Color(beaconColor.r, beaconColor.g, beaconColor.b, 0f);
+            beacon.sharedMaterial = NewMaterial(beaconColor);
 
             GameObject symbol = new GameObject("Símbolo primordial");
             symbol.transform.SetParent(root.transform, false);
@@ -395,7 +461,12 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             symbolRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             symbolRenderer.receiveShadows = false;
 
-            LineRenderer ring = root.AddComponent<LineRenderer>();
+            // Unity solo admite un LineRenderer por GameObject. El haz y el
+            // anillo son piezas independientes para que ambos puedan existir
+            // sin dejar el segundo componente nulo durante BuildVisuals.
+            GameObject ringObject = new GameObject("Anillo del altar");
+            ringObject.transform.SetParent(root.transform, false);
+            LineRenderer ring = ringObject.AddComponent<LineRenderer>();
             ring.loop = true;
             ring.useWorldSpace = false;
             ring.widthMultiplier = 0.08f;
@@ -410,10 +481,13 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
                 Root = root,
                 Bud = bud,
                 BudRenderer = budRenderer,
+                BudLabel = budLabel,
+                Beacon = beacon,
                 Symbol = symbol.transform,
                 SymbolRenderer = symbolRenderer,
                 Ring = ring
             };
+            visuals[i].BudPetals.AddRange(petals);
         }
         RefreshVisualTransforms();
     }
@@ -440,15 +514,23 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             visual.Root.SetActive(true);
             if (visual.Symbol != null) visual.Symbol.gameObject.SetActive(active);
             if (visual.Bud != null) visual.Bud.SetActive(budActive);
+            if (visual.BudLabel != null) visual.BudLabel.gameObject.SetActive(budActive);
+            if (visual.Beacon != null) visual.Beacon.enabled = budActive;
             if (visual.Ring != null) visual.Ring.enabled = active || budActive;
             if (budActive)
             {
                 int health = Mathf.Max(1, CurrentBudHealthAt(i));
-                float healthScale = Mathf.Lerp(0.62f, 0.84f, health / 3f);
+                float healthScale = Mathf.Lerp(0.78f, 1f, health / 3f);
                 visual.Bud.transform.localScale = Vector3.one * healthScale;
                 Color budColor = Color.Lerp(new Color(0.28f, 0.01f, 0.05f),
                     new Color(0.72f, 0.035f, 0.18f), health / 3f);
                 SetMaterial(visual.BudRenderer, budColor);
+                foreach (Renderer petal in visual.BudPetals)
+                    SetMaterial(petal, Color.Lerp(budColor, new Color(0.76f, 0.08f, 0.28f), 0.42f));
+                if (visual.BudLabel != null)
+                    visual.BudLabel.text = GameLocalization.Choose(
+                        $"CAPULLO CORRUPTO\n{health} GOLPES",
+                        $"CORRUPTED BUD\n{health} HITS");
                 visual.Ring.startColor = budColor;
                 visual.Ring.endColor = budColor;
                 if (visual.Ring.sharedMaterial == null)
@@ -493,7 +575,11 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             if (visual.Bud != null && visual.Bud.activeSelf)
             {
                 float pulse = 1f + Mathf.Sin(time * 4f + i) * 0.06f;
-                visual.Bud.transform.localScale *= pulse;
+                int health = Mathf.Max(1, CurrentBudHealthAt(i));
+                float healthScale = Mathf.Lerp(0.78f, 1f, health / 3f);
+                visual.Bud.transform.localScale = Vector3.one * healthScale * pulse;
+                if (camera != null && visual.BudLabel != null)
+                    visual.BudLabel.transform.rotation = camera.transform.rotation;
             }
         }
     }
