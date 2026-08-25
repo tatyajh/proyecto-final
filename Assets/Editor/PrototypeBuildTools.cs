@@ -18,7 +18,7 @@ public static class PrototypeBuildTools
     private const string BuildFolderName = "ProyectoFinal-WebGL";
     private const string ZipName = "ProyectoFinal-WebGL-ITCH.zip";
 
-    [MenuItem("Blighted Blossoms/Validar prototipo")]
+    [MenuItem("Blighted Blossoms/Validar prototipo _F9")]
     public static void ValidateFromMenu()
     {
         if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
@@ -170,10 +170,10 @@ public static class PrototypeBuildTools
                 errors.Add($"{definition.name}: faltan habilidades configurables.");
             else
             {
-                if (Mathf.Abs(definition.basicAbility.cooldown - 1f) > 0.001f)
-                    errors.Add($"{definition.name}: cooldown básico distinto de 1 s.");
-                if (Mathf.Abs(definition.ultimateAbility.cooldown - 8f) > 0.001f)
-                    errors.Add($"{definition.name}: cooldown de definitiva distinto de 8 s.");
+                if (Mathf.Abs(definition.basicAbility.cooldown - 3f) > 0.001f)
+                    errors.Add($"{definition.name}: cooldown básico distinto de 3 s.");
+                if (Mathf.Abs(definition.ultimateAbility.cooldown - 15f) > 0.001f)
+                    errors.Add($"{definition.name}: cooldown de definitiva distinto de 15 s.");
             }
 
             GameObject prefab = Resources.Load<GameObject>(definition.prefabPath);
@@ -187,6 +187,25 @@ public static class PrototypeBuildTools
             Animator animator = prefab.GetComponentInChildren<Animator>(true);
             if (animator == null || animator.runtimeAnimatorController == null)
                 errors.Add($"{definition.name}: prefab sin Animator Controller.");
+
+            float expectedHeight = PlayerController.DesiredCharacterHeight(i);
+            float measuredHeight = CharacterPrototypeImporter.MeasureGameplayHeight(prefab);
+            if (expectedHeight <= 0.1f)
+                errors.Add($"{definition.name}: falta calibrar expectedGameplayHeight (Actualizar personajes/F6).");
+            else if (measuredHeight <= 0.1f)
+                errors.Add($"{definition.name}: no fue posible medir los bounds visuales.");
+            else
+            {
+                float deviation = Mathf.Abs(measuredHeight - expectedHeight) / expectedHeight;
+                if (deviation > 0.08f)
+                    errors.Add($"{definition.name}: altura visual {measuredHeight:0.00}; " +
+                               $"se esperaba {expectedHeight:0.00} (desvío {deviation:P0}).");
+            }
+
+            float authoredVerticalOffset = Mathf.Abs(definition.modelLocalOffset.y *
+                                                       PlayerController.GameplayPlayerScale);
+            if (expectedHeight > 0.1f && authoredVerticalOffset > expectedHeight * 0.15f)
+                errors.Add($"{definition.name}: modelLocalOffset.y es demasiado grande y puede dejar el mesh flotando o enterrado.");
         }
     }
 

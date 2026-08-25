@@ -11,15 +11,16 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2817e9c0054ee5fe2f884cc39fab785a, type: 3}
   m_Name: Acatheria
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier:
   characterName: Acatheria
   prefabPath: Characters/Acatheria
-  portraitPath: 
+  portraitPath:
   animatorControllerPath: Characters/Acatheria
   sortOrder: 4
   tint: {r: 0.3, g: 0.64, b: 0.45, a: 1}
   previewScale: 1
   previewYaw: 180
-  modelLocalOffset: {x: 0, y: 0.46493673, z: 0}
+  expectedGameplayHeight: 7.083905
+  modelLocalOffset: {x: 0, y: 0, z: 0}
   basicAbility: {fileID: 11400000, guid: 550192b0807fa9746b10e3920102970e, type: 2}
   ultimateAbility: {fileID: 11400000, guid: f3fb3187b2d9ac2498b3d08fc1ae1b71, type: 2}

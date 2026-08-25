@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2817e9c0054ee5fe2f884cc39fab785a, type: 3}
   m_Name: Heliandra
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier:
   characterName: Heliandra
   prefabPath: Characters/Heliandra
   portraitPath:
@@ -20,5 +20,7 @@ MonoBehaviour:
   tint: {r: 0.78, g: 0.35, b: 0.2, a: 1}
   previewScale: 1
   previewYaw: 180
+  expectedGameplayHeight: 5.2575254
+  modelLocalOffset: {x: 0, y: 0, z: 0}
   basicAbility: {fileID: 11400000, guid: 4a13979f070c1894da1cb124b722d4c7, type: 2}
   ultimateAbility: {fileID: 11400000, guid: a26c05d9435931442b813460e9d8cc1f, type: 2}

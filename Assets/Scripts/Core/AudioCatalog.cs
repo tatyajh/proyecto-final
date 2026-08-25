@@ -14,6 +14,8 @@ public static class AudioCatalog
     private static AudioMixerGroup sfxGroup;
     private static bool sfxGroupLoaded;
 
+    public static AudioMixerGroup SfxGroup => GetSfxGroup();
+
     public static void PlayUiClick()
     {
         if (!uiClickLoaded)

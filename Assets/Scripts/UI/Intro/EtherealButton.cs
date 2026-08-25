@@ -16,6 +16,13 @@ using UnityEngine.UI;
 public sealed class EtherealButton : MonoBehaviour,
     IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler, ISelectHandler, IDeselectHandler
 {
+    public enum SelectionStyle
+    {
+        Frame,
+        Underline,
+        None
+    }
+
     private const float HoverScale = 1.06f;
     private const float TransitionSeconds = 0.28f;
     private static Sprite roundedSprite;
@@ -30,6 +37,8 @@ public sealed class EtherealButton : MonoBehaviour,
     private Color hoverColor;
     private bool interactable = true;
     private bool selected;
+    private SelectionStyle selectionStyle;
+    private Image selectionUnderline;
 
     public System.Action OnActivated;
 
@@ -39,9 +48,11 @@ public sealed class EtherealButton : MonoBehaviour,
     /// <summary>Crea la opción con un texto fijo (sin traducción en vivo).</summary>
     public static EtherealButton Create(
         Transform parent, string text, float fontSize, Vector2 position, Vector2 size,
-        Color rest, System.Action onActivated, bool withBackground = false)
+        Color rest, System.Action onActivated, bool withBackground = false,
+        SelectionStyle selectedStyle = SelectionStyle.Frame)
     {
-        EtherealButton button = Build(parent, text, fontSize, position, size, rest, onActivated, withBackground);
+        EtherealButton button = Build(parent, text, fontSize, position, size, rest, onActivated,
+            withBackground, selectedStyle);
         return button;
     }
 
@@ -52,17 +63,18 @@ public sealed class EtherealButton : MonoBehaviour,
     /// </summary>
     public static EtherealButton CreateLocalized(
         Transform parent, string spanish, string english, float fontSize, Vector2 position, Vector2 size,
-        Color rest, System.Action onActivated, bool withBackground = false)
+        Color rest, System.Action onActivated, bool withBackground = false,
+        SelectionStyle selectedStyle = SelectionStyle.Frame)
     {
         EtherealButton button = Build(parent, GameLocalization.Choose(spanish, english),
-            fontSize, position, size, rest, onActivated, withBackground);
+            fontSize, position, size, rest, onActivated, withBackground, selectedStyle);
         LocalizedText.Attach(button.label, spanish, english);
         return button;
     }
 
     private static EtherealButton Build(
         Transform parent, string text, float fontSize, Vector2 position, Vector2 size,
-        Color rest, System.Action onActivated, bool withBackground)
+        Color rest, System.Action onActivated, bool withBackground, SelectionStyle selectedStyle)
     {
         GameObject host = new GameObject($"{text} Option", typeof(RectTransform), typeof(CanvasRenderer));
         host.transform.SetParent(parent, false);
@@ -95,8 +107,8 @@ public sealed class EtherealButton : MonoBehaviour,
         RectTransform labelRect = labelHost.GetComponent<RectTransform>();
         labelRect.anchorMin = Vector2.zero;
         labelRect.anchorMax = Vector2.one;
-        labelRect.offsetMin = Vector2.zero;
-        labelRect.offsetMax = Vector2.zero;
+        labelRect.offsetMin = withBackground ? new Vector2(34f, 12f) : new Vector2(18f, 8f);
+        labelRect.offsetMax = withBackground ? new Vector2(-34f, -12f) : new Vector2(-18f, -8f);
 
         TextMeshProUGUI label = labelHost.AddComponent<TextMeshProUGUI>();
         label.text = text;
@@ -113,7 +125,24 @@ public sealed class EtherealButton : MonoBehaviour,
 
         EtherealButton button = host.AddComponent<EtherealButton>();
         button.Initialize(background, label, rest, onActivated);
+        button.selectionStyle = selectedStyle;
         button.outline = host.GetComponent<Outline>();
+        if (selectedStyle == SelectionStyle.Underline)
+        {
+            GameObject underlineHost = new GameObject("Selected underline", typeof(RectTransform), typeof(Image));
+            underlineHost.transform.SetParent(host.transform, false);
+            RectTransform underlineRect = underlineHost.GetComponent<RectTransform>();
+            underlineRect.anchorMin = underlineRect.anchorMax = underlineRect.pivot = new Vector2(0.5f, 0f);
+            underlineRect.anchoredPosition = new Vector2(0f, 5f);
+            underlineRect.sizeDelta = new Vector2(80f, 5f);
+            Image underline = underlineHost.GetComponent<Image>();
+            underline.sprite = GetRoundedSprite();
+            underline.type = Image.Type.Sliced;
+            underline.color = MenuTheme.GiltBright;
+            underline.raycastTarget = false;
+            underlineHost.SetActive(false);
+            button.selectionUnderline = underline;
+        }
         return button;
     }
 
@@ -192,13 +221,25 @@ public sealed class EtherealButton : MonoBehaviour,
     public void SetSelected(bool value)
     {
         selected = value;
-        if (background != null)
+        if (selectionUnderline != null)
+        {
+            float width = Mathf.Clamp(label.preferredWidth + 36f, 72f,
+                Mathf.Max(72f, ((RectTransform)transform).rect.width - 24f));
+            selectionUnderline.rectTransform.sizeDelta = new Vector2(width, 5f);
+            selectionUnderline.gameObject.SetActive(value);
+        }
+        if (background != null && selectionStyle == SelectionStyle.Frame)
         {
             Sprite frame = GetFrameSprite(value);
             if (frame != null) background.sprite = frame;
             background.color = value
                 ? new Color(1f, 1f, 1f, 0.9f)
                 : backgroundRest;
+        }
+        else if (background != null)
+        {
+            background.sprite = null;
+            background.color = backgroundRest;
         }
         if (outline != null)
         {

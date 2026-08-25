@@ -40,21 +40,50 @@ public sealed class CharacterSpawner : MonoBehaviour
         if (current != null) Destroy(current);
 
         Transform anchor = spawnPoint != null ? spawnPoint : transform;
-        PlayModeContext.UseTraining();
-        OnlineMatchState.Reset();
-
-        GameObject prefab = ResolvePrefab(characterIndex);
-        current = prefab != null && prefab.GetComponentInChildren<PlayerController>(true) != null
-            ? Instantiate(prefab, anchor.position, anchor.rotation)
-            : CreateLocalPlayableRig(anchor.position, anchor.rotation);
-        current.name = $"Player ({CharacterCatalog.NameOf(characterIndex)})";
-
-        PlaceOnNavMesh(current, anchor.position);
+        LocalCombatantConfig config = LocalCombatantConfig.Human(characterIndex,
+            CharacterCatalog.NameOf(characterIndex));
+        current = SpawnLocalCombatant(config, anchor.position, anchor.rotation);
+        if (current == null) return null;
         RememberSelection(characterIndex);
         FocusCamera(current.transform);
 
         Debug.Log($"[CharacterSpawner] {CharacterCatalog.NameOf(characterIndex)} listo en {anchor.position}.");
         return current;
+    }
+
+    /// <summary>
+    /// Crea un combatiente local independiente. A diferencia de
+    /// SpawnSelectedCharacter no reemplaza al humano, no cambia PlayerPrefs y
+    /// no roba el seguimiento de cámara; por eso sirve para el rival de IA.
+    /// </summary>
+    public GameObject SpawnLocalCombatant(LocalCombatantConfig config, Vector3 position, Quaternion rotation)
+    {
+        config.CharacterIndex = CharacterCatalog.Clamp(config.CharacterIndex);
+        PlayModeContext.UseTraining();
+        OnlineMatchState.Reset();
+
+        GameObject prefab = ResolvePrefab(config.CharacterIndex);
+        GameObject instance = prefab != null && prefab.GetComponentInChildren<PlayerController>(true) != null
+            ? Instantiate(prefab, position, rotation)
+            : CreateLocalPlayableRig(position, rotation);
+        // Mantener el ajuste final de Julian en todos los caminos de spawn,
+        // incluido entrenamiento: se escala Player, no el mesh importado.
+        instance.transform.localScale = Vector3.one * PlayerController.GameplayPlayerScale;
+        instance.name = config.Role == LocalCombatantRole.TrainingBot
+            ? $"Training Bot ({CharacterCatalog.NameOf(config.CharacterIndex)})"
+            : $"Player ({CharacterCatalog.NameOf(config.CharacterIndex)})";
+
+        PlayerController controller = instance.GetComponentInChildren<PlayerController>(true);
+        if (controller == null)
+        {
+            Debug.LogError($"[CharacterSpawner] {instance.name} no contiene PlayerController.");
+            Destroy(instance);
+            return null;
+        }
+
+        controller.ConfigureLocalCombatant(config);
+        PlaceOnNavMesh(instance, position);
+        return instance;
     }
 
     /// <summary>
@@ -67,11 +96,14 @@ public sealed class CharacterSpawner : MonoBehaviour
         GameObject rig = GameObject.CreatePrimitive(PrimitiveType.Capsule);
         rig.name = "Local playable rig";
         rig.transform.SetPositionAndRotation(position, rotation);
+        rig.transform.localScale = Vector3.one * PlayerController.GameplayPlayerScale;
 
         NavMeshAgent agent = rig.AddComponent<NavMeshAgent>();
         agent.radius = 0.67f;
         agent.height = 2f;
-        agent.baseOffset = 1f;
+        // El Player completo se escala a 4.5. Un baseOffset de 1 también se
+        // escalaba y levantaba el rig varios metros sobre el NavMesh.
+        agent.baseOffset = 0f;
         agent.speed = 6f;
 
         rig.AddComponent<Gameplay.Combat.PlayerCombatController>();
@@ -110,7 +142,15 @@ public sealed class CharacterSpawner : MonoBehaviour
 
         if (NavMesh.SamplePosition(desired, out NavMeshHit hit, 12f, NavMesh.AllAreas))
         {
-            agent.Warp(hit.position);
+            if (agent.isActiveAndEnabled)
+            {
+                if (!agent.Warp(hit.position))
+                    character.transform.position = hit.position;
+            }
+            else
+            {
+                character.transform.position = hit.position;
+            }
             return;
         }
 

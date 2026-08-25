@@ -38,6 +38,9 @@ public sealed class CharacterDefinition : ScriptableObject
     public float previewYaw = 180f;
 
     [Header("Ajuste del modelo jugable")]
+    [Tooltip("Altura mundial aprobada del mesh al usar la escala jugable. El preflight detecta desviaciones mayores al 8%.")]
+    [Min(0.1f)] public float expectedGameplayHeight;
+
     [Tooltip("Compensa pivotes exportados fuera de los pies sin alterar el spawn, la cámara ni los demás personajes.")]
     public Vector3 modelLocalOffset;
 

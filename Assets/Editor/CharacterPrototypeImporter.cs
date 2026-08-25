@@ -79,7 +79,7 @@ public static class CharacterPrototypeImporter
         EditorApplication.delayCall += EnsurePrototypeAssets;
     }
 
-    [MenuItem("Blighted Blossoms/Actualizar personajes")]
+    [MenuItem("Blighted Blossoms/Actualizar personajes _F6")]
     public static void EnsurePrototypeAssets()
     {
         if (EditorApplication.isCompiling || EditorApplication.isUpdating)
@@ -104,8 +104,9 @@ public static class CharacterPrototypeImporter
         }
 
         CalibrateAcatheriaPivot();
+        bool calibratedHeights = CalibrateExpectedGameplayHeights();
 
-        if (built > 0)
+        if (built > 0 || calibratedHeights)
         {
             AssetDatabase.SaveAssets();
             Debug.Log($"[CharacterPrototypeImporter] {built} personaje(s) actualizados en {OutputFolder}.");
@@ -113,36 +114,62 @@ public static class CharacterPrototypeImporter
     }
 
     /// <summary>
-    /// Acatheria fue exportada con el pivote separado de las patas. Se mide el
-    /// prefab original (sin tocar su escala ni su FBX) y la compensación queda
-    /// en su ficha; PlayerController la suma después del posicionamiento común
-    /// que llegó desde Develop.
+    /// Captura una sola vez la altura visual aprobada de cada prefab con la
+    /// escala jugable. Después, el preflight compara contra esta línea base y
+    /// detecta un FBX o prefab reescalado accidentalmente antes del build.
+    /// </summary>
+    private static bool CalibrateExpectedGameplayHeights()
+    {
+        bool changed = false;
+        foreach (CharacterSource source in Sources)
+        {
+            CharacterDefinition definition = AssetDatabase.LoadAssetAtPath<CharacterDefinition>(
+                $"{OutputFolder}/Definitions/{source.CatalogName}.asset");
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(source.PrefabPath);
+            if (definition == null || prefab == null || definition.expectedGameplayHeight > 0.1f) continue;
+
+            float height = MeasureGameplayHeight(prefab);
+            if (height <= 0.1f) continue;
+            definition.expectedGameplayHeight = height;
+            EditorUtility.SetDirty(definition);
+            changed = true;
+        }
+        return changed;
+    }
+
+    internal static float MeasureGameplayHeight(GameObject prefab)
+    {
+        if (prefab == null) return 0f;
+        GameObject instance = Object.Instantiate(prefab);
+        instance.hideFlags = HideFlags.HideAndDontSave;
+        instance.transform.localScale = Vector3.one * PlayerController.GameplayPlayerScale;
+        Renderer[] renderers = instance.GetComponentsInChildren<Renderer>(true);
+        bool found = false;
+        Bounds bounds = default;
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer is not SkinnedMeshRenderer && renderer is not MeshRenderer) continue;
+            if (!found) { bounds = renderer.bounds; found = true; }
+            else bounds.Encapsulate(renderer.bounds);
+        }
+        Object.DestroyImmediate(instance);
+        return found && float.IsFinite(bounds.size.y) ? bounds.size.y : 0f;
+    }
+
+    /// <summary>
+    /// Acatheria fue exportada con el pivote separado de las patas. El ajuste
+    /// común de PlayerController ya alinea el límite inferior real de cada
+    /// renderer con el suelo; conservar además el desplazamiento antiguo de la
+    /// ficha lo aplicaba dos veces y la dejaba flotando tras regenerar prefabs.
     /// </summary>
     private static void CalibrateAcatheriaPivot()
     {
-        const string prefabPath = OutputFolder + "/Acatheria.prefab";
         const string definitionPath = OutputFolder + "/Definitions/Acatheria.asset";
-        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
         CharacterDefinition definition = AssetDatabase.LoadAssetAtPath<CharacterDefinition>(definitionPath);
-        if (prefab == null || definition == null) return;
-
-        GameObject instance = Object.Instantiate(prefab, Vector3.zero, Quaternion.identity);
-        Renderer[] renderers = instance.GetComponentsInChildren<Renderer>(true);
-        if (renderers.Length == 0)
-        {
-            Object.DestroyImmediate(instance);
-            return;
-        }
-
-        Bounds bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++) bounds.Encapsulate(renderers[i].bounds);
-        Vector3 measuredOffset = new Vector3(0f, -bounds.min.y, 0f);
-        Object.DestroyImmediate(instance);
-
-        if ((definition.modelLocalOffset - measuredOffset).sqrMagnitude <= 0.000001f) return;
-        definition.modelLocalOffset = measuredOffset;
+        if (definition == null || definition.modelLocalOffset.sqrMagnitude <= 0.000001f) return;
+        definition.modelLocalOffset = Vector3.zero;
         EditorUtility.SetDirty(definition);
-        Debug.Log($"[CharacterPrototypeImporter] Pivote de Acatheria compensado {measuredOffset}.");
+        Debug.Log("[CharacterPrototypeImporter] Acatheria usa la alineación dinámica común de pivote.");
     }
 
     private static void ConfigurePortraitImporters()
@@ -388,9 +415,21 @@ public static class CharacterPrototypeImporter
                 string clipName = (clip.name ?? string.Empty).ToLowerInvariant();
                 bool shouldLoop = clipName.Contains("idle") || clipName.Contains("iddle") ||
                                   clipName.Contains("walk") || clipName.Contains("running");
-                if (clip.loopTime == shouldLoop) continue;
-                clip.loopTime = shouldLoop;
-                dirty = true;
+                if (clip.loopTime != shouldLoop)
+                {
+                    clip.loopTime = shouldLoop;
+                    dirty = true;
+                }
+
+                // El desplazamiento del rig se resuelve en PlayerController y
+                // Fusion. Hornearlo también dentro del FBX hundía a Lunara y
+                // hacía que otros personajes parecieran flotar al cambiar de
+                // idle a caminar. Todos los clips jugables deben ser in-place.
+                if (!clip.lockRootHeightY) { clip.lockRootHeightY = true; dirty = true; }
+                if (!clip.lockRootPositionXZ) { clip.lockRootPositionXZ = true; dirty = true; }
+                if (!clip.lockRootRotation) { clip.lockRootRotation = true; dirty = true; }
+                if (clip.keepOriginalPositionY) { clip.keepOriginalPositionY = false; dirty = true; }
+                if (!clip.heightFromFeet) { clip.heightFromFeet = true; dirty = true; }
             }
 
             if (dirty) importer.clipAnimations = clips;

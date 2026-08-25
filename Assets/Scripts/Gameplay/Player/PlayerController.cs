@@ -8,11 +8,16 @@ using Fusion;
 using Gameplay.Combat;
 
 [RequireComponent(typeof(NavMeshAgent))]
-public class PlayerController : NetworkBehaviour 
+public class PlayerController : NetworkBehaviour
 {
-    public const int MaxHealth = 100;
-    // Visual scale only. Navigation, collider, movement and combat ranges stay unchanged.
-    private const float DesiredCharacterHeight = 28f;
+    public const int MaxHealth = 250;
+    // Julian's final gameplay setup scales the Player root itself. Character
+    // meshes keep their authored scale so FBX proportions and pivot fixes are
+    // not overwritten again from code.
+    public const float GameplayPlayerScale = 4.5f;
+
+    public static float DesiredCharacterHeight(int characterIndex) =>
+        CharacterCatalog.ExpectedGameplayHeightOf(characterIndex);
     private static readonly string[] CharacterNames =
     {
         "Heliandra", "Lunara", "Solmara", "Quietmor", "Acatheria", "Terramor"
@@ -50,6 +55,8 @@ public class PlayerController : NetworkBehaviour
     private float localStunnedUntil;
     private float localBlindUntil;
     private float localRevealUntil;
+    private float localPickupHasteUntil;
+    private float localPickupPowerUntil;
     private int localShield;
     private Vector2 pendingMoveInput;
     private bool pendingAimRotation;
@@ -62,6 +69,10 @@ public class PlayerController : NetworkBehaviour
     private int prototypeCharacterIndex = -1;
     private bool exitConfirmationVisible;
     private MatchOutcome currentOutcome;
+    private LocalCombatantConfig localCombatant;
+    private bool localCombatantConfigured;
+    private CombatTargetingController targetingController;
+    private Coroutine presentationPauseRoutine;
 
     [Networked] public int NetworkHealth { get; private set; }
     [Networked] public NetworkBool CombatReady { get; private set; }
@@ -81,10 +92,20 @@ public class PlayerController : NetworkBehaviour
     [Networked] private TickTimer BlindTimer { get; set; }
     [Networked] private TickTimer RevealTimer { get; set; }
     [Networked] private int NetworkShield { get; set; }
+    [Networked] private TickTimer PickupHasteTimer { get; set; }
+    [Networked] private TickTimer PickupPowerTimer { get; set; }
+    [Networked] public NetworkBool ArenaSystemsInitialized { get; private set; }
+    [Networked] public int ArenaPickupMask { get; private set; }
+    [Networked] public int ArenaPickupTypes { get; private set; }
+    [Networked] public int ArenaPickupGeneration { get; private set; }
+    [Networked] public NetworkBool ArenaCorruptionActive { get; private set; }
+    [Networked] public float ArenaCorruptionProgress { get; private set; }
+    [Networked] private TickTimer ArenaNextPickupTimer { get; set; }
+    [Networked] private TickTimer ArenaCorruptionTimer { get; set; }
 
     public int CurrentHealth => Object == null || !CombatReady ? localHealth : NetworkHealth;
     public bool IsDefeated => (Object == null || CombatReady) && CurrentHealth <= 0;
-    public bool HasLocalControl => CanControlPlayer();
+    public bool HasLocalControl => AcceptsHumanInput();
     public string PlayerDisplayName => GetDisplayName();
     public float BasicCooldownRemaining => RemainingCooldown(AbilitySlot.Basic);
     public float UltimateCooldownRemaining => RemainingCooldown(AbilitySlot.Ultimate);
@@ -100,6 +121,13 @@ public class PlayerController : NetworkBehaviour
     public bool ExitConfirmationVisible => exitConfirmationVisible;
     public string NetworkStatusText => Object != null ? OnlineMatchState.Message : string.Empty;
     public bool IsOnlinePlayer => Object != null;
+    public bool IsTrainingBot => Object == null && localCombatantConfigured &&
+        localCombatant.Role == LocalCombatantRole.TrainingBot;
+    public bool IsLocalTrainingParticipant => Object == null && localCombatantConfigured &&
+        PlayModeContext.Current == PlayMode.Training;
+    public bool IsCombatParticipant => IsNetworkMatchParticipant || IsLocalTrainingParticipant;
+    public int SelectedCharacterIndex => GetSelectedCharacterIndex();
+    public CombatTargetingController Targeting => targetingController;
     /// <summary>
     /// Los avatares jugables son objetos creados por PlayerSpawner. El Player
     /// serializado en OnlineArena es una referencia de escena del equipo y se
@@ -108,19 +136,31 @@ public class PlayerController : NetworkBehaviour
     public bool IsNetworkMatchParticipant => Object != null &&
         !Object.NetworkTypeId.IsSceneObject && Object.InputAuthority.IsValid;
     public string TeamStatusText => Object == null
-        ? string.Empty
+        ? (PlayModeContext.Current == PlayMode.Training
+            ? GameLocalization.Choose("ENTRENAMIENTO", "TRAINING")
+            : string.Empty)
         : $"{MatchContext.Mode.DisplayName} · {GameLocalization.Choose("Equipo", "Team")} {MatchTeams.NameOf(Team)}";
-    public Color TeamDisplayColor => Object == null
-        ? new Color(0.94f, 0.91f, 0.82f)
-        : MatchTeams.ColorOf(Team);
+    public Color TeamDisplayColor => IsCombatParticipant
+        ? MatchTeams.ColorOf(Team)
+        : new Color(0.94f, 0.91f, 0.82f);
     public string MatchResultText => currentOutcome == MatchOutcome.Victory
         ? GameLocalization.Choose("VICTORIA", "VICTORY")
         : currentOutcome == MatchOutcome.Defeat
             ? GameLocalization.Choose("DERROTA", "DEFEAT")
             : string.Empty;
+    public bool HasWon => currentOutcome == MatchOutcome.Victory;
+    public bool HasLost => currentOutcome == MatchOutcome.Defeat;
+    public bool HasPickupHaste => Object == null
+        ? Time.unscaledTime < localPickupHasteUntil
+        : TimerActive(PickupHasteTimer);
+    public bool HasPowerPickup => Object == null
+        ? Time.unscaledTime < localPickupPowerUntil
+        : TimerActive(PickupPowerTimer);
 
-    /// <summary>Equipo efectivo. Fuera de red (modo historia) todos son del mismo bando.</summary>
-    public int Team => Object == null ? MatchTeams.Bloom : TeamId;
+    /// <summary>Equipo efectivo en red o en el duelo local de entrenamiento.</summary>
+    public int Team => Object == null
+        ? (localCombatantConfigured ? localCombatant.TeamId : MatchTeams.Bloom)
+        : TeamId;
 
     public bool IsAllyOf(PlayerController other) => other != null && other.Team == Team;
 
@@ -138,6 +178,73 @@ public class PlayerController : NetworkBehaviour
         combatController = GetComponent<PlayerCombatController>();
     }
 
+    public void ConfigureLocalCombatant(LocalCombatantConfig config)
+    {
+        if (Object != null) return;
+
+        config.CharacterIndex = CharacterCatalog.Clamp(config.CharacterIndex);
+        config.TeamId = config.TeamId == MatchTeams.Blight ? MatchTeams.Blight : MatchTeams.Bloom;
+        if (string.IsNullOrWhiteSpace(config.DisplayName))
+            config.DisplayName = CharacterCatalog.NameOf(config.CharacterIndex);
+
+        localCombatant = config;
+        localCombatantConfigured = true;
+    }
+
+    /// <summary>Restaura por completo un combatiente local para una revancha.</summary>
+    public void ResetLocalCombatState(Vector3 position, Quaternion rotation)
+    {
+        if (Object != null) return;
+
+        StopAllCoroutines();
+        localHealth = MaxHealth;
+        localShield = 0;
+        basicReadyAt = 0f;
+        ultimateReadyAt = 0f;
+        localRootedUntil = 0f;
+        localSlowedUntil = 0f;
+        localSilencedUntil = 0f;
+        localHasteUntil = 0f;
+        localStunnedUntil = 0f;
+        localBlindUntil = 0f;
+        localRevealUntil = 0f;
+        localPickupHasteUntil = 0f;
+        localPickupPowerUntil = 0f;
+        castSequence = 0;
+        receivedCastTokens.Clear();
+        currentOutcome = MatchOutcome.Undecided;
+        controlsEnabled = true;
+        exitConfirmationVisible = false;
+
+        transform.SetPositionAndRotation(position, rotation);
+        if (agent == null) agent = GetComponent<NavMeshAgent>();
+        if (agent != null && agent.isActiveAndEnabled)
+        {
+            if (agent.isOnNavMesh) agent.ResetPath();
+            if (NavMesh.SamplePosition(position, out NavMeshHit hit, 12f, agent.areaMask))
+                agent.Warp(hit.position);
+        }
+    }
+
+    public bool TrySetBotDestination(Vector3 destination, float speedMultiplier = 1f)
+    {
+        if (!IsTrainingBot || !controlsEnabled || IsDefeated || IsMovementBlocked()) return false;
+        if (!EnsureAgentOnNavMesh()) return false;
+        if (!NavMesh.SamplePosition(destination, out NavMeshHit hit, 4f, agent.areaMask)) return false;
+
+        agent.speed = moveSpeed * CurrentMovementMultiplier() * Mathf.Clamp(speedMultiplier, 0.25f, 1f);
+        agent.stoppingDistance = 0.6f;
+        agent.updateRotation = true;
+        agent.SetDestination(hit.position);
+        return true;
+    }
+
+    public void StopBotMovement()
+    {
+        if (!IsTrainingBot || agent == null || !agent.isActiveAndEnabled || !agent.isOnNavMesh) return;
+        agent.ResetPath();
+    }
+
     private void Start()
     {
         if (Object != null && Object.NetworkTypeId.IsSceneObject)
@@ -153,30 +260,41 @@ public class PlayerController : NetworkBehaviour
             return;
         }
 
+        if (Object == null && PlayModeContext.Current == PlayMode.Training && !localCombatantConfigured)
+        {
+            ConfigureLocalCombatant(LocalCombatantConfig.Human(
+                PlayerPrefs.GetInt("SelectedCharacterIndex", 3),
+                CharacterCatalog.NameOf(PlayerPrefs.GetInt("SelectedCharacterIndex", 3))));
+        }
+
         if (agent == null) agent = GetComponent<NavMeshAgent>();
         if (combatController == null) combatController = GetComponent<PlayerCombatController>();
         if (combatController == null) combatController = gameObject.AddComponent<PlayerCombatController>();
         combatController.Bind(this);
         if (joystick == null) joystick = FindFirstObjectByType<VirtualJoystick>();
-        
+
         mainCam = Camera.main;
         if (agent != null)
             agent.speed = moveSpeed;
 
-        if (CanControlPlayer())
+        if (HasLocalControl)
         {
+            targetingController = CombatTargetingController.EnsureFor(this);
             MobaCamera mobaCamera = FindFirstObjectByType<MobaCamera>();
-            if (mobaCamera != null)
-                mobaCamera.SetTarget(transform);
+            if (mobaCamera != null) mobaCamera.BindTargeting(targetingController);
         }
 
         ApplyPlayerColor();
 
-        if (Object == null && PlayModeContext.Current == PlayMode.Training)
+        if (Object == null && PlayModeContext.Current == PlayMode.Training && HasLocalControl)
             CombatTrainingBootstrap.EnsureForLocalPlayer(this);
 
-        if (CanControlPlayer())
+        if (HasLocalControl)
+        {
             CombatHudController.EnsureFor(this);
+            CombatAlertAudioController.EnsureFor(this);
+            ArenaPowerUpManager.EnsureFor(this);
+        }
 
         ConfigureNetworkAuthorityComponents();
     }
@@ -209,15 +327,26 @@ public class PlayerController : NetworkBehaviour
             MatchReady = false;
             NetworkMoving = false;
             NetworkShield = 0;
+            PickupHasteTimer = default;
+            PickupPowerTimer = default;
+            ArenaSystemsInitialized = false;
+            ArenaPickupMask = 0;
+            ArenaPickupTypes = 0;
+            ArenaPickupGeneration = 0;
+            ArenaCorruptionActive = false;
+            ArenaCorruptionProgress = 0f;
         }
         ApplyPlayerColor();
         ConfigureNetworkAuthorityComponents();
 
-        if (CanControlPlayer())
+        if (HasLocalControl)
         {
+            targetingController = CombatTargetingController.EnsureFor(this);
             MobaCamera mobaCamera = FindFirstObjectByType<MobaCamera>();
-            if (mobaCamera != null) mobaCamera.SetTarget(transform);
+            if (mobaCamera != null) mobaCamera.BindTargeting(targetingController);
             CombatHudController.EnsureFor(this);
+            CombatAlertAudioController.EnsureFor(this);
+            ArenaPowerUpManager.EnsureFor(this);
         }
     }
 
@@ -283,10 +412,16 @@ public class PlayerController : NetworkBehaviour
 
         Vector3 target = PlayerSpawner.ArenaCenter + MatchTeams.SpawnOffset(TeamId, TeamSlot, MatchContext.TeamSize);
 
-        if (agent != null && agent.isActiveAndEnabled && agent.isOnNavMesh)
+        if (NavMesh.SamplePosition(target, out NavMeshHit spawnHit, 12f, NavMesh.AllAreas))
+            target = spawnHit.position;
+
+        if (agent != null && agent.isActiveAndEnabled)
         {
-            agent.ResetPath();
-            agent.Warp(target);
+            if (agent.isOnNavMesh)
+                agent.ResetPath();
+
+            if (!agent.Warp(target))
+                transform.position = target;
         }
         else
         {
@@ -299,6 +434,15 @@ public class PlayerController : NetworkBehaviour
     private void Update()
     {
         UpdateMatchOutcome();
+
+        // Los bots comparten simulación y habilidades, pero jamás leen el
+        // teclado/joysticks ni reaccionan al Escape del jugador humano.
+        if (!HasLocalControl)
+        {
+            if (Object == null)
+                UpdateCharacterAnimation(agent != null && agent.velocity.sqrMagnitude > 0.04f);
+            return;
+        }
 
         if (Object != null && HasStateAuthority && MatchReady && OnlineMatchState.Phase != OnlineMatchPhase.Playing &&
             OnlineMatchState.Phase != OnlineMatchPhase.Finished)
@@ -324,6 +468,13 @@ public class PlayerController : NetworkBehaviour
         if (!controlsEnabled || IsDefeated || !CanControlPlayer() || agent == null || mainCam == null)
             return;
 
+        // El prefab puede activarse uno o dos frames antes de que Unity termine
+        // de asociar el agente con la malla. Nunca invoques Move/ResetPath en
+        // ese intervalo: además de ensuciar la consola, el personaje se queda
+        // inmóvil. Si existe suelo navegable cercano, lo recuperamos aquí.
+        if (!EnsureAgentOnNavMesh())
+            return;
+
         // Durante la espera se permite moverse y probar ataques: la arena vacía
         // se sentía congelada. Solo se bloquea si la partida aún no arrancó y
         // tampoco estamos esperando (conexión caída, resultado, etc.).
@@ -341,7 +492,7 @@ public class PlayerController : NetworkBehaviour
         {
             agent.updateRotation = false;
         }
-        
+
         Vector2 inputDir = GetInputVector();
 
         if (IsMovementBlocked()) inputDir = Vector2.zero;
@@ -404,10 +555,16 @@ public class PlayerController : NetworkBehaviour
 
     public override void FixedUpdateNetwork()
     {
+        if (HasStateAuthority) UpdateArenaCoordinator();
         if (!HasStateAuthority || agent == null || !agent.enabled || !controlsEnabled || IsDefeated)
             return;
         if (OnlineMatchState.Phase is OnlineMatchPhase.ConnectionFailed or OnlineMatchPhase.Finished)
             return;
+        if (!EnsureAgentOnNavMesh())
+        {
+            NetworkMoving = false;
+            return;
+        }
 
         Vector2 movement = IsMovementBlocked() ? Vector2.zero : pendingMoveInput;
         SimulateDirectMovement(movement, pendingAimRotation, Runner.DeltaTime);
@@ -438,6 +595,9 @@ public class PlayerController : NetworkBehaviour
 
     private void SimulateDirectMovement(Vector2 inputDir, bool isAiming, float deltaTime)
     {
+        if (!EnsureAgentOnNavMesh())
+            return;
+
         if (inputDir.magnitude <= 0.1f)
         {
             if (!isAiming) agent.updateRotation = true;
@@ -476,9 +636,18 @@ public class PlayerController : NetworkBehaviour
         return TryCastAbility(ultimate ? AbilitySlot.Ultimate : AbilitySlot.Basic, aim);
     }
 
+    public Vector3 AssistAimDirection(Vector3 direction, AbilitySlot slot)
+    {
+        if (targetingController == null && HasLocalControl)
+            targetingController = CombatTargetingController.EnsureFor(this);
+        return targetingController != null
+            ? targetingController.AssistDirection(direction, slot)
+            : direction;
+    }
+
     public bool TryCastAbility(AbilitySlot slot, AimData aim)
     {
-        Vector3 direction = aim.Direction;
+        Vector3 direction = HasLocalControl ? AssistAimDirection(aim.Direction, slot) : aim.Direction;
         direction.y = 0f;
         if (direction.sqrMagnitude < 0.001f) direction = transform.forward;
         direction.Normalize();
@@ -493,7 +662,9 @@ public class PlayerController : NetworkBehaviour
         AbilityDefinition ability = GetAbility(slot);
         StartCooldown(slot, ability.cooldown);
         castSequence = castSequence == int.MaxValue ? 1 : castSequence + 1;
-        int sourcePlayer = Object != null ? Object.InputAuthority.PlayerId : -1;
+        int sourcePlayer = Object != null
+            ? Object.InputAuthority.PlayerId
+            : (localCombatantConfigured ? localCombatant.CombatantId : -1);
         float ratio = aim.IsTap ? 1f : Mathf.Clamp(aim.DistanceRatio, 0.35f, 1f);
         float travel = ability.range * ratio;
         transform.rotation = Quaternion.LookRotation(direction);
@@ -535,12 +706,23 @@ public class PlayerController : NetworkBehaviour
         }
 
         HashSet<PlayerController> players = new HashSet<PlayerController>();
-        HashSet<DestructiblePracticeTarget> practiceTargets = new HashSet<DestructiblePracticeTarget>();
-        GatherAbilityTargets(ability, direction, travel, areaCenter, players, practiceTargets);
+        GatherAbilityTargets(ability, direction, travel, areaCenter, players);
+
+        bool hitsEnemy = false;
+        foreach (PlayerController candidate in players)
+        {
+            if (IsCombatParticipantForAbilities(candidate) && !candidate.IsDefeated && !IsAllyOf(candidate))
+            {
+                hitsEnemy = true;
+                break;
+            }
+        }
+        bool empowered = ability.damage > 0 && hitsEnemy && ConsumePowerPickup();
+        int resolvedDamage = empowered ? Mathf.CeilToInt(ability.damage * 1.25f) : ability.damage;
 
         foreach (PlayerController target in players)
         {
-            if (!IsMatchParticipant(target) || target.IsDefeated) continue;
+            if (!IsCombatParticipantForAbilities(target) || target.IsDefeated) continue;
             if (IsAllyOf(target))
             {
                 if (ability.alliedEffect != CombatEffectKind.None)
@@ -549,7 +731,7 @@ public class PlayerController : NetworkBehaviour
                 continue;
             }
 
-            target.ReceiveAbilityImpact(ability.damage, ability.hostileEffect,
+            target.ReceiveAbilityImpact(resolvedDamage, ability.hostileEffect,
                 ability.hostileEffectDuration, ability.hostileEffectStrength, direction,
                 Team, sourcePlayer, sequence, GetSelectedCharacterIndex(), ability.slot);
         }
@@ -560,18 +742,16 @@ public class PlayerController : NetworkBehaviour
             ReceiveFriendlyEffect(ability.alliedEffect, ability.alliedEffectDuration,
                 ability.alliedEffectStrength, Team, sourcePlayer, sequence);
 
-        foreach (DestructiblePracticeTarget target in practiceTargets)
-            if (target != null && ability.damage > 0) target.ApplyDamage(ability.damage);
     }
 
     private void GatherAbilityTargets(AbilityDefinition ability, Vector3 direction, float travel, Vector3 areaCenter,
-        HashSet<PlayerController> players, HashSet<DestructiblePracticeTarget> practiceTargets)
+        HashSet<PlayerController> players)
     {
         if (ability.shape is AbilityShape.Line or AbilityShape.Dash)
         {
             foreach (RaycastHit hit in Physics.SphereCastAll(transform.position + Vector3.up, ability.radius,
                          direction, travel, Physics.AllLayers, QueryTriggerInteraction.Ignore))
-                AddCombatTarget(hit.collider, players, practiceTargets);
+                AddCombatTarget(hit.collider, players);
             return;
         }
 
@@ -586,23 +766,18 @@ public class PlayerController : NetworkBehaviour
                 if (toTarget.sqrMagnitude > 0.01f && Vector3.Angle(direction, toTarget) > ability.coneAngle * 0.5f)
                     continue;
             }
-            AddCombatTarget(hit, players, practiceTargets);
+            AddCombatTarget(hit, players);
         }
     }
 
-    private void AddCombatTarget(Collider hit, HashSet<PlayerController> players,
-        HashSet<DestructiblePracticeTarget> practiceTargets)
+    private void AddCombatTarget(Collider hit, HashSet<PlayerController> players)
     {
         if (hit == null || hit.transform == transform || hit.transform.IsChildOf(transform)) return;
         PlayerController playerTarget = hit.GetComponentInParent<PlayerController>();
         if (playerTarget != null && playerTarget != this)
         {
             players.Add(playerTarget);
-            return;
         }
-
-        DestructiblePracticeTarget practice = hit.GetComponentInParent<DestructiblePracticeTarget>();
-        if (practice != null) practiceTargets.Add(practice);
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
@@ -649,7 +824,7 @@ public class PlayerController : NetworkBehaviour
         // propio modelo lo tapaba. Ahora sale del pecho.
         // El modelo puede crecer para la cámara sin subir el origen del VFX
         // hasta la cara. De otro modo la esfera termina tapando al personaje.
-        Vector3 origin = transform.position + Vector3.up * Mathf.Min(4.5f, DesiredCharacterHeight * 0.32f);
+        Vector3 origin = transform.position + Vector3.up * GameplayPlayerScale;
         line.SetPosition(0, origin);
         line.SetPosition(1, origin + direction.normalized * feedbackRange);
 
@@ -711,7 +886,35 @@ public class PlayerController : NetworkBehaviour
             (sourceCharacter == 5 && slot == AbilitySlot.Basic))
             ApplyDisplacement(direction, Mathf.Max(2f, strength));
 
+        if (Object == null)
+            CombatFeedbackController.PresentHit(this, remainingDamage, direction);
+        else
+            RPC_PresentImpact(remainingDamage, direction);
+
         if (CurrentHealth <= 0) controlsEnabled = false;
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_PresentImpact(int damage, Vector3 direction)
+    {
+        CombatFeedbackController.PresentHit(this, damage, direction);
+    }
+
+    public void PauseCharacterPresentation(float seconds)
+    {
+        if (prototypeAnimator == null || seconds <= 0f) return;
+        if (presentationPauseRoutine != null) StopCoroutine(presentationPauseRoutine);
+        presentationPauseRoutine = StartCoroutine(PauseAnimator(seconds));
+    }
+
+    private IEnumerator PauseAnimator(float seconds)
+    {
+        if (prototypeAnimator == null) yield break;
+        float previousSpeed = prototypeAnimator.speed;
+        prototypeAnimator.speed = 0f;
+        yield return new WaitForSecondsRealtime(seconds);
+        if (prototypeAnimator != null) prototypeAnimator.speed = previousSpeed;
+        presentationPauseRoutine = null;
     }
 
     private void ReceiveFriendlyEffect(CombatEffectKind effect, float duration, float strength,
@@ -813,12 +1016,9 @@ public class PlayerController : NetworkBehaviour
     /// </summary>
     private MatchOutcome EvaluateOutcome()
     {
-        if (Object == null)
-            return IsDefeated ? MatchOutcome.Defeat : MatchOutcome.Undecided;
-
         // Si el equipo rival se fue, sus avatares ya no existen y el recuento de
         // abajo no puede resolver la partida. PlayerSpawner marca esta fase.
-        if (OnlineMatchState.Phase == OnlineMatchPhase.OpponentDisconnected)
+        if (Object != null && OnlineMatchState.Phase == OnlineMatchPhase.OpponentDisconnected)
             return IsDefeated ? MatchOutcome.Defeat : MatchOutcome.Victory;
 
         int allies = 0;
@@ -828,7 +1028,8 @@ public class PlayerController : NetworkBehaviour
 
         foreach (PlayerController player in FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
         {
-            if (!IsMatchParticipant(player) || !player.CombatReady) continue;
+            if (!player.IsCombatParticipant) continue;
+            if (player.Object != null && !player.CombatReady) continue;
 
             if (IsAllyOf(player))
             {
@@ -890,7 +1091,7 @@ public class PlayerController : NetworkBehaviour
         prototypeVisual = new GameObject($"Prototype {CharacterNames[characterIndex]}").transform;
         prototypeVisual.SetParent(transform, false);
         prototypeVisual.localPosition = Vector3.zero;
-        prototypeVisual.localScale = Vector3.one * (DesiredCharacterHeight / 2f);
+        prototypeVisual.localScale = Vector3.one;
 
         CreateVisualPart("Torso", PrimitiveType.Cube, new Vector3(0f, 0.15f, 0f), new Vector3(0.68f, 0.82f, 0.42f), primary);
         CreateVisualPart("Head", PrimitiveType.Sphere, new Vector3(0f, 0.88f, 0f), Vector3.one * 0.42f, secondary);
@@ -921,9 +1122,21 @@ public class PlayerController : NetworkBehaviour
 
         prototypeAnimator = EnsureCharacterAnimator(instance, characterIndex);
         prototypeVisual = instance.transform;
-        FitImportedCharacterToCollider(instance);
-        instance.transform.localPosition += CharacterCatalog.ModelLocalOffsetOf(characterIndex);
+        Vector3 presentationOffset = CharacterCatalog.ModelLocalOffsetOf(characterIndex);
+        instance.transform.localPosition = new Vector3(presentationOffset.x, 0f, presentationOffset.z);
+        FitImportedCharacterToCollider(instance, presentationOffset.y);
+        StartCoroutine(StabilizeImportedCharacterGrounding(instance, presentationOffset.y));
         return true;
+    }
+
+    private IEnumerator StabilizeImportedCharacterGrounding(GameObject character, float authoredGroundOffset)
+    {
+        // El Animator y el NavMeshAgent actualizan sus bounds/altura durante
+        // los primeros frames. Repetir la alineación una vez evita que el arte
+        // quede flotando después del primer tick de navegación.
+        yield return null;
+        yield return new WaitForEndOfFrame();
+        if (character != null) FitImportedCharacterToCollider(character, authoredGroundOffset);
     }
 
     /// <summary>
@@ -971,16 +1184,55 @@ public class PlayerController : NetworkBehaviour
         return false;
     }
 
-    private void FitImportedCharacterToCollider(GameObject character)
+    private void FitImportedCharacterToCollider(GameObject character, float authoredGroundOffset)
     {
         if (character == null) return;
-        character.transform.localPosition = Vector3.zero;
         character.transform.localRotation = Quaternion.identity;
+
+        // Los seis FBX conservan su escala exportada. Solo compensamos la
+        // diferencia de pivote para que el punto más bajo del arte coincida
+        // con el suelo del Player; esto evita modelos volando o enterrados sin
+        // volver a introducir el autoescalado que anulaba el ajuste de Julian.
+        Renderer[] renderers = character.GetComponentsInChildren<Renderer>(false);
+        bool hasBounds = false;
+        Bounds visualBounds = default;
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer is not SkinnedMeshRenderer && renderer is not MeshRenderer)
+                continue;
+            if (!renderer.enabled || !renderer.gameObject.activeInHierarchy)
+                continue;
+            if (!hasBounds)
+            {
+                visualBounds = renderer.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                visualBounds.Encapsulate(renderer.bounds);
+            }
+        }
+
+        if (!hasBounds || float.IsNaN(visualBounds.min.y) || float.IsInfinity(visualBounds.min.y))
+            return;
+
+        float groundY = transform.position.y;
+        int areaMask = agent != null ? agent.areaMask : NavMesh.AllAreas;
+        if (NavMesh.SamplePosition(transform.position, out NavMeshHit groundHit, 8f, areaMask))
+            groundY = groundHit.position.y;
+        float groundDelta = groundY - visualBounds.min.y;
+        // modelLocalOffset.y es una corrección pequeña, calibrada por arte,
+        // expresada en espacio local del Player. Se aplica después de apoyar
+        // el bounds porque la escala 4.5 del rig también debe afectarla.
+        character.transform.position += Vector3.up * groundDelta;
+        character.transform.localPosition += Vector3.up * authoredGroundOffset;
     }
 
-    private static bool IsMatchParticipant(PlayerController player)
+    private static bool IsCombatParticipantForAbilities(PlayerController player)
     {
-        return player != null && player.IsNetworkMatchParticipant && player.MatchReady;
+        if (player == null) return false;
+        if (player.IsLocalTrainingParticipant) return true;
+        return player.IsNetworkMatchParticipant && player.MatchReady;
     }
 
     private void CreateVisualPart(string partName, PrimitiveType primitiveType, Vector3 position, Vector3 scale, Color color)
@@ -1008,14 +1260,19 @@ public class PlayerController : NetworkBehaviour
         // Fuera de red se lee de disco; en red se usa la propiedad replicada
         // para que cada jugador vea el personaje real que eligió el resto.
         if (Object == null)
-            return Mathf.Clamp(PlayerPrefs.GetInt("SelectedCharacterIndex", 3), 0, CharacterNames.Length - 1);
+            return localCombatantConfigured
+                ? CharacterCatalog.Clamp(localCombatant.CharacterIndex)
+                : Mathf.Clamp(PlayerPrefs.GetInt("SelectedCharacterIndex", 3), 0, CharacterNames.Length - 1);
 
         return Mathf.Clamp(CharacterIndex, 0, CharacterNames.Length - 1);
     }
 
     private string GetDisplayName()
     {
-        if (Object == null) return PlayerPrefs.GetString("PlayerName", "Player");
+        if (Object == null)
+            return localCombatantConfigured
+                ? localCombatant.DisplayName
+                : PlayerPrefs.GetString("PlayerName", "Player");
         string networkName = DisplayName.ToString();
         return string.IsNullOrWhiteSpace(networkName) ? "Player" : networkName;
     }
@@ -1023,6 +1280,12 @@ public class PlayerController : NetworkBehaviour
     private bool CanControlPlayer()
     {
         return Object == null || (IsNetworkMatchParticipant && HasStateAuthority);
+    }
+
+    private bool AcceptsHumanInput()
+    {
+        if (Object != null) return IsNetworkMatchParticipant && HasStateAuthority;
+        return !localCombatantConfigured || localCombatant.Role == LocalCombatantRole.Human;
     }
 
     private AbilityDefinition GetAbility(AbilitySlot slot)
@@ -1076,11 +1339,13 @@ public class PlayerController : NetworkBehaviour
         if (Object == null)
         {
             if (Time.unscaledTime < localHasteUntil) return 1.3f;
+            if (Time.unscaledTime < localPickupHasteUntil) return 1.25f;
             if (Time.unscaledTime < localSlowedUntil) return 0.55f;
             return 1f;
         }
 
         if (TimerActive(HasteTimer)) return 1.3f;
+        if (TimerActive(PickupHasteTimer)) return 1.25f;
         if (TimerActive(SlowTimer)) return 0.55f;
         return 1f;
     }
@@ -1107,7 +1372,152 @@ public class PlayerController : NetworkBehaviour
         if (stunned) states.Add(GameLocalization.Choose("Aturdido", "Stunned"));
         if (blinded) states.Add(GameLocalization.Choose("Cegado", "Blinded"));
         if (revealed) states.Add(GameLocalization.Choose("Revelado", "Revealed"));
+        if (HasPickupHaste) states.Add(GameLocalization.Choose("Semilla veloz", "Swift seed"));
+        if (HasPowerPickup) states.Add(GameLocalization.Choose("Chispa de poder", "Power spark"));
         return string.Join(" · ", states);
+    }
+
+    public void GrantArenaPickup(ArenaPickupType type)
+    {
+        if (Object == null || HasStateAuthority) ApplyArenaPickup(type);
+        else RPC_GrantArenaPickup((int)type);
+    }
+
+    [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+    private void RPC_GrantArenaPickup(int type)
+    {
+        ApplyArenaPickup((ArenaPickupType)type);
+    }
+
+    private void ApplyArenaPickup(ArenaPickupType type)
+    {
+        switch (type)
+        {
+            case ArenaPickupType.Vitality:
+                int healing = Mathf.CeilToInt(MaxHealth * 0.15f);
+                if (Object == null) localHealth = Mathf.Min(MaxHealth, localHealth + healing);
+                else NetworkHealth = Mathf.Min(MaxHealth, NetworkHealth + healing);
+                break;
+            case ArenaPickupType.Haste:
+                if (Object == null) localPickupHasteUntil = Time.unscaledTime + 6f;
+                else PickupHasteTimer = TickTimer.CreateFromSeconds(Runner, 6f);
+                break;
+            case ArenaPickupType.Power:
+                if (Object == null) localPickupPowerUntil = Time.unscaledTime + 10f;
+                else PickupPowerTimer = TickTimer.CreateFromSeconds(Runner, 10f);
+                break;
+        }
+    }
+
+    private bool ConsumePowerPickup()
+    {
+        if (!HasPowerPickup) return false;
+        if (Object == null) localPickupPowerUntil = 0f;
+        else PickupPowerTimer = default;
+        return true;
+    }
+
+    public void ApplyCorruptionDamage(int damage)
+    {
+        if (damage <= 0 || IsDefeated) return;
+        if (Object != null && !HasStateAuthority) return;
+        if (Object == null) localHealth = Mathf.Max(0, localHealth - damage);
+        else NetworkHealth = Mathf.Max(0, NetworkHealth - damage);
+        CombatFeedbackController.PresentHit(this, damage, Vector3.up);
+        if (CurrentHealth <= 0) controlsEnabled = false;
+    }
+
+    public ArenaPickupType NetworkPickupTypeAt(int pedestal)
+    {
+        int shift = Mathf.Clamp(pedestal, 0, 3) * 2;
+        return (ArenaPickupType)((ArenaPickupTypes >> shift) & 0x3);
+    }
+
+    public void RequestArenaPickupClaim(int pedestal, int generation, int claimantPlayerId)
+    {
+        if (Object == null) return;
+        RPC_RequestArenaPickupClaim(pedestal, generation, claimantPlayerId);
+    }
+
+    [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+    private void RPC_RequestArenaPickupClaim(int pedestal, int generation, int claimantPlayerId)
+    {
+        if (!IsArenaCoordinator() || generation != ArenaPickupGeneration ||
+            pedestal < 0 || pedestal > 3 || (ArenaPickupMask & (1 << pedestal)) == 0) return;
+
+        PlayerController claimant = null;
+        foreach (PlayerController candidate in FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
+        {
+            if (!candidate.IsNetworkMatchParticipant ||
+                candidate.Object.InputAuthority.PlayerId != claimantPlayerId) continue;
+            claimant = candidate;
+            break;
+        }
+        if (claimant == null || claimant.IsDefeated) return;
+        Vector3 pedestalPosition = ArenaPowerUpManager.PedestalPosition(PlayerSpawner.ArenaCenter, pedestal);
+        if (Vector3.Distance(claimant.transform.position, pedestalPosition) > 3.2f) return;
+
+        claimant.GrantArenaPickup(NetworkPickupTypeAt(pedestal));
+        ArenaPickupMask &= ~(1 << pedestal);
+        ArenaNextPickupTimer = TickTimer.CreateFromSeconds(Runner, 20f);
+    }
+
+    private void UpdateArenaCoordinator()
+    {
+        if (!IsArenaCoordinator() || !MatchReady) return;
+        if (!ArenaSystemsInitialized)
+        {
+            ArenaSystemsInitialized = true;
+            ArenaPickupMask = 0;
+            ArenaPickupTypes = 0;
+            ArenaPickupGeneration = 0;
+            ArenaCorruptionActive = false;
+            ArenaCorruptionProgress = 0f;
+            ArenaNextPickupTimer = TickTimer.CreateFromSeconds(Runner, 15f);
+            ArenaCorruptionTimer = TickTimer.CreateFromSeconds(Runner, 180f);
+        }
+
+        int desired = MatchContext.TeamSize <= 1 ? 1 : 2;
+        if (CountBits(ArenaPickupMask) < desired && ArenaNextPickupTimer.ExpiredOrNotRunning(Runner))
+            SpawnNetworkPickups(desired);
+
+        if (!ArenaCorruptionActive && ArenaCorruptionTimer.ExpiredOrNotRunning(Runner))
+            ArenaCorruptionActive = true;
+        if (ArenaCorruptionActive)
+            ArenaCorruptionProgress = Mathf.Clamp01(ArenaCorruptionProgress + Runner.DeltaTime / 45f);
+    }
+
+    private bool IsArenaCoordinator()
+    {
+        return IsNetworkMatchParticipant && HasStateAuthority && Runner != null &&
+               Runner.IsSharedModeMasterClient;
+    }
+
+    private void SpawnNetworkPickups(int desired)
+    {
+        int mask = ArenaPickupMask;
+        int types = ArenaPickupTypes;
+        int seed = ArenaPickupGeneration + 1;
+        for (int offset = 0; offset < 4 && CountBits(mask) < desired; offset++)
+        {
+            int pedestal = (seed + offset) % 4;
+            if ((mask & (1 << pedestal)) != 0) continue;
+            int type = (seed + pedestal) % 3;
+            int shift = pedestal * 2;
+            types = (types & ~(0x3 << shift)) | (type << shift);
+            mask |= 1 << pedestal;
+        }
+        ArenaPickupMask = mask;
+        ArenaPickupTypes = types;
+        ArenaPickupGeneration = seed;
+        ArenaNextPickupTimer = default;
+    }
+
+    private static int CountBits(int value)
+    {
+        int count = 0;
+        while (value != 0) { count += value & 1; value >>= 1; }
+        return count;
     }
 
     /// <summary>
@@ -1141,7 +1551,17 @@ public class PlayerController : NetworkBehaviour
         ReturnToMultiplayerLobby();
     }
 
-    public void PlayAgain() => ReturnToMultiplayerLobby();
+    public void PlayAgain()
+    {
+        if (Object == null && PlayModeContext.Current == PlayMode.Training)
+        {
+            CombatTrainingBootstrap training = FindFirstObjectByType<CombatTrainingBootstrap>();
+            if (training != null) training.StartNewDuel();
+            return;
+        }
+
+        ReturnToMultiplayerLobby();
+    }
 
     public void ExitToMenu() => ReturnToMainMenu();
 
@@ -1223,16 +1643,18 @@ public class PlayerController : NetworkBehaviour
     /// Ataque con teclado y ratón. Las escenas de arena no tienen AttackJoystick,
     /// y PlayerCombatController solo dispara ataques desde esos joysticks, así
     /// que sin esto no había ninguna forma de atacar en PC.
-    /// Q o clic derecho: ataque básico. R: definitiva. Siempre hacia el cursor.
+    /// Q o clic izquierdo: ataque básico. E o clic derecho: definitiva.
+    /// Siempre se resuelven hacia el cursor.
     /// </summary>
     private void ProcessAttackInput()
     {
-        bool basic = Input.GetKeyDown(KeyCode.Q) || Input.GetMouseButtonDown(1);
-        bool ultimate = Input.GetKeyDown(KeyCode.R);
+        bool basic = Input.GetKeyDown(KeyCode.Q) || Input.GetMouseButtonDown(0);
+        bool ultimate = Input.GetKeyDown(KeyCode.E) || Input.GetMouseButtonDown(1);
         if (!basic && !ultimate) return;
         if (IsPointerOverUI()) return;
 
-        Vector3 direction = GetAimDirectionFromCursor();
+        AbilitySlot slot = ultimate ? AbilitySlot.Ultimate : AbilitySlot.Basic;
+        Vector3 direction = AssistAimDirection(GetAimDirectionFromCursor(), slot);
         if (direction == Vector3.zero) return;
 
         transform.rotation = Quaternion.LookRotation(direction);
@@ -1259,12 +1681,38 @@ public class PlayerController : NetworkBehaviour
 
     private void ProcessClickToMove(bool isAiming)
     {
+        if (!EnsureAgentOnNavMesh())
+            return;
+
         Ray ray = mainCam.ScreenPointToRay(Input.mousePosition);
         if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity, groundLayer))
         {
-            agent.updateRotation = !isAiming;
-            agent.SetDestination(hit.point);
+            if (NavMesh.SamplePosition(hit.point, out NavMeshHit navHit, 3f, agent.areaMask))
+            {
+                agent.updateRotation = !isAiming;
+                agent.SetDestination(navHit.position);
+            }
         }
+    }
+
+    /// <summary>
+    /// Garantiza que el agente activo esté asociado a una superficie navegable
+    /// antes de usar cualquiera de sus operaciones de movimiento. Es necesario
+    /// tanto al cargar Movement directamente como al crear jugadores de Fusion.
+    /// </summary>
+    private bool EnsureAgentOnNavMesh()
+    {
+        if (agent == null || !agent.isActiveAndEnabled)
+            return false;
+
+        if (agent.isOnNavMesh)
+            return true;
+
+        float recoveryRadius = Mathf.Max(12f, agent.height);
+        if (!NavMesh.SamplePosition(transform.position, out NavMeshHit hit, recoveryRadius, agent.areaMask))
+            return false;
+
+        return agent.Warp(hit.position) && agent.isOnNavMesh;
     }
 
     private bool IsPointerOverUI()

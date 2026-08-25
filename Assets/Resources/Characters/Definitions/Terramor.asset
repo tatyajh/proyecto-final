@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2817e9c0054ee5fe2f884cc39fab785a, type: 3}
   m_Name: Terramor
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier:
   characterName: Terramor
   prefabPath: Characters/Terramor
   portraitPath:
@@ -20,5 +20,7 @@ MonoBehaviour:
   tint: {r: 0.43, g: 0.3, b: 0.2, a: 1}
   previewScale: 1
   previewYaw: 180
+  expectedGameplayHeight: 5.9852076
+  modelLocalOffset: {x: 0, y: 0, z: 0}
   basicAbility: {fileID: 11400000, guid: 21d4f84dcf5fbf741a19cac44d532af4, type: 2}
   ultimateAbility: {fileID: 11400000, guid: 1e4cfdd3b8c08064c8f3e8e5bc56bc70, type: 2}

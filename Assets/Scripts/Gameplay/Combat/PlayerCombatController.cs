@@ -167,10 +167,14 @@ namespace Gameplay.Combat
             if (basicAimIndicator != null)
             {
                 basicAimIndicator.ShowIndicators(player != null ? player.BasicAbilityRange : 5f);
-                basicAimIndicator.UpdateAim(aimData.Direction);
+                basicAimIndicator.UpdateAim(player != null
+                    ? player.AssistAimDirection(aimData.Direction, AbilitySlot.Basic)
+                    : aimData.Direction);
             }
 
-            RotatePlayerTowards(aimData.Direction);
+            RotatePlayerTowards(player != null
+                ? player.AssistAimDirection(aimData.Direction, AbilitySlot.Basic)
+                : aimData.Direction);
         }
 
         private void HandleBasicRelease(AimData aimData)
@@ -180,9 +184,11 @@ namespace Gameplay.Combat
 
             if (basicAimIndicator != null) basicAimIndicator.HideIndicators();
 
+            // TryCastAbility aplica la asistencia exactamente una vez. El
+            // indicador sí la previsualiza, pero no acumulamos dos Slerp al
+            // soltar el joystick.
             Vector3 finalDirection = aimData.IsTap ? transform.forward : aimData.Direction;
             RotatePlayerTowards(finalDirection);
-
             aimData.Direction = finalDirection;
             player?.TryCastAbility(AbilitySlot.Basic, aimData);
         }
@@ -198,10 +204,14 @@ namespace Gameplay.Combat
             if (ultimateAimIndicator != null)
             {
                 ultimateAimIndicator.ShowIndicators(player != null ? player.UltimateAbilityRange : 8f);
-                ultimateAimIndicator.UpdateAim(aimData.Direction);
+                ultimateAimIndicator.UpdateAim(player != null
+                    ? player.AssistAimDirection(aimData.Direction, AbilitySlot.Ultimate)
+                    : aimData.Direction);
             }
 
-            RotatePlayerTowards(aimData.Direction);
+            RotatePlayerTowards(player != null
+                ? player.AssistAimDirection(aimData.Direction, AbilitySlot.Ultimate)
+                : aimData.Direction);
         }
 
         private void HandleUltimateRelease(AimData aimData)
@@ -213,7 +223,6 @@ namespace Gameplay.Combat
 
             Vector3 finalDirection = aimData.IsTap ? transform.forward : aimData.Direction;
             RotatePlayerTowards(finalDirection);
-
             aimData.Direction = finalDirection;
             player?.TryCastAbility(AbilitySlot.Ultimate, aimData);
         }

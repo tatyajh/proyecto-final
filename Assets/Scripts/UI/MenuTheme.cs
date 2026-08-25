@@ -37,6 +37,16 @@ public static class MenuTheme
     public static readonly Color RojoLatente = Hex(0x652721);
     public static readonly Color VerdeMusgoGris = Hex(0x455047);
 
+    // Paleta común del HUD. Mantiene la lectura marfil del menú, pero cambia
+    // el café/bronce dominante por ceniza y musgo para que arena y menú se
+    // sientan parte del mismo sistema sin competir con el escenario.
+    public static readonly Color HudAsh = Hex(0x626866);
+    public static readonly Color HudAshDark = Hex(0x252A29);
+    public static readonly Color HudMoss = Hex(0x52604B);
+    public static readonly Color HudMossBright = Hex(0x7A8868);
+    public static readonly Color HudPanel = Hex(0x131615);
+    public static readonly Color HudIvory = MarfilEnvejecido;
+
     // Paleta del flujo de inicio (estética Hollow Knight). Convive con la del
     // GDD de arriba: esta manda en el prólogo y los menús, la otra en el HUD
     // de la arena, que ya tiene su identidad dorada asentada.

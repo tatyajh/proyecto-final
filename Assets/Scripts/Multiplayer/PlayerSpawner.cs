@@ -27,10 +27,6 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
     {
         ArenaCenter = spawnPosition;
 
-        // Null-tolerante: no pasa nada si todavía no se importó el clip.
-        if (MusicPlayer.Instance != null)
-            MusicPlayer.Instance.PlayMusic(Resources.Load<AudioClip>("Audio/Music/Arena"));
-
         // La misma arena sirve para la prueba local. En ese contexto el
         // Player ya existe en la escena y no debe buscar Photon ni reportar
         // como error la ausencia intencional de NetworkRunner.

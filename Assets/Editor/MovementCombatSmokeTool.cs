@@ -4,6 +4,7 @@ using Gameplay.Combat;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.AI;
 
 /// <summary>
 /// Smoke test ejecutable en batch: abre Movement directamente, instancia los
@@ -26,6 +27,7 @@ public static class MovementCombatSmokeTool
         EditorApplication.playModeStateChanged += OnPlayModeChanged;
     }
 
+    [MenuItem("Blighted Blossoms/Pruebas/Smoke de seis personajes _F8", false, 42)]
     public static void RunBatch()
     {
         SessionState.SetBool(SessionKey, true);
@@ -112,18 +114,20 @@ public static class MovementCombatSmokeTool
         if (animator == null || animator.runtimeAnimatorController == null)
             failures.Add($"{name} no tiene Animator Controller en Movement.");
 
-        if (name == "Acatheria")
+        Renderer[] visible = Array.FindAll(renderers,
+            renderer => renderer.enabled && renderer.gameObject.activeInHierarchy &&
+                        (renderer is SkinnedMeshRenderer || renderer is MeshRenderer));
+        if (visible.Length > 0)
         {
-            Renderer[] visible = Array.FindAll(renderers,
-                renderer => renderer.enabled && renderer.gameObject.activeInHierarchy);
-            if (visible.Length > 0)
-            {
-                Bounds bounds = visible[0].bounds;
-                for (int i = 1; i < visible.Length; i++) bounds.Encapsulate(visible[i].bounds);
-                float groundError = Mathf.Abs(bounds.min.y - player.transform.position.y);
-                if (groundError > 0.15f)
-                    failures.Add($"Acatheria conserva un desfase vertical de {groundError:0.000} unidades.");
-            }
+            Bounds bounds = visible[0].bounds;
+            for (int i = 1; i < visible.Length; i++) bounds.Encapsulate(visible[i].bounds);
+            float expectedGroundY = player.transform.position.y;
+            if (NavMesh.SamplePosition(player.transform.position, out NavMeshHit groundHit,
+                    8f, NavMesh.AllAreas))
+                expectedGroundY = groundHit.position.y;
+            float signedGroundOffset = bounds.min.y - expectedGroundY;
+            if (Mathf.Abs(signedGroundOffset) > 0.15f)
+                failures.Add($"{name} conserva un desfase vertical de {signedGroundOffset:+0.000;-0.000} unidades.");
         }
 
         AimData aim = new AimData { Direction = player.transform.forward, DistanceRatio = 1f, IsTap = true };

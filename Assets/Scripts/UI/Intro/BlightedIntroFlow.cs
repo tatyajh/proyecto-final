@@ -7,6 +7,13 @@ using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
+public enum MenuPlayRoute
+{
+    None,
+    Training,
+    Online
+}
+
 /// <summary>
 /// Flujo de inicio completo en una sola escena: historia, camino, modo, nombre
 /// y personaje. Las fases son CanvasGroup hermanos y se cruzan con fades, sin
@@ -21,6 +28,9 @@ public sealed class BlightedIntroFlow : MonoBehaviour
 
     private const float CrossFadeSeconds = 0.9f;
     private const int PreviewLayer = 30;
+#if UNITY_EDITOR
+    private const string TeamTestScenePath = "Assets/Scenes/Testing/Character tests.unity";
+#endif
 
     /// <summary>
     /// Al volver de una partida no se repite el nombre ni el prólogo: se
@@ -48,10 +58,14 @@ public sealed class BlightedIntroFlow : MonoBehaviour
     private SporeAtmosphere atmosphere;
     private TMP_InputField nameField;
     private TMP_Text statusLabel;
-    private EtherealButton backButton;
     private CanvasGroup settingsOverlay;
     private MatchModeDefinition selectedMode = MatchModeCatalog.Default;
     private int selectedCharacter = 3;
+    private MenuPlayRoute selectedRoute;
+    private GameObject routeChoiceRoot;
+    private GameObject onlineFormatsRoot;
+    private EtherealButton trainingCharacterAction;
+    private EtherealButton onlineCharacterAction;
 
     // Ajustes reconstruye estas opciones para reflejar qué idioma y calidad
     // están activos.
@@ -115,7 +129,6 @@ public sealed class BlightedIntroFlow : MonoBehaviour
         BuildNamePhase();
         BuildCharacterPhase();
         BuildSettingsOverlay();
-        BuildBackButton();
 
         flow.TransitionStarted += OnTransitionStarted;
         flow.PhaseChanged += OnPhaseChanged;
@@ -123,10 +136,6 @@ public sealed class BlightedIntroFlow : MonoBehaviour
 
         flow.HideAll();
         UITween.SnapHidden(settingsOverlay);
-
-        // Null-tolerante: no pasa nada si todavía no se importó el clip.
-        if (MusicPlayer.Instance != null)
-            MusicPlayer.Instance.PlayMusic(Resources.Load<AudioClip>("Audio/Music/MainTheme"));
 
         // SnapTo muestra la fase inicial al instante, sin fundido de entrada.
         flow.SnapTo(ReturnDirectlyToMenu ? Phase.Mode : Phase.Prologue);
@@ -229,7 +238,8 @@ public sealed class BlightedIntroFlow : MonoBehaviour
         Sprite titleArt = Resources.Load<Sprite>("UI/BlightedBlossomsTitle");
         if (titleArt != null)
         {
-            Image headerLogo = NewImage("Game Title", canvas.transform, Color.white);
+            Image headerLogo = NewImage("Game Title", canvas.transform,
+                MenuTheme.WithAlpha(MenuTheme.MarfilEnvejecido, 0.80f));
             headerLogo.sprite = titleArt;
             headerLogo.preserveAspect = true;
             headerLogo.raycastTarget = false;
@@ -243,7 +253,40 @@ public sealed class BlightedIntroFlow : MonoBehaviour
             TMP_Text headerTitle = NewText(canvas.transform, "BLIGHTED BLOSSOMS", new Vector2(0f, -30f), new Vector2(700f, 44f), 30f, MenuTheme.OroMarchito, true);
             AnchorToTop(headerTitle.rectTransform);
         }
+
+#if UNITY_EDITOR
+        BuildTeamTestShortcut();
+#endif
     }
+
+#if UNITY_EDITOR
+    /// <summary>
+    /// Conserva el acceso rápido que el equipo dejó en el menú, pero con la
+    /// identidad visual actual y solo dentro del Editor. La escena permanece
+    /// fuera del build publicado y aun así puede abrirse durante Play Mode.
+    /// </summary>
+    private void BuildTeamTestShortcut()
+    {
+        if (UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEditor.SceneAsset>(TeamTestScenePath) == null)
+            return;
+
+        EtherealButton shortcut = EtherealButton.CreateLocalized(canvas.transform,
+            "PRUEBAS DEL EQUIPO", "TEAM TEST SCENE", 24f, Vector2.zero,
+            new Vector2(300f, 64f), MenuTheme.MarfilEnvejecido,
+            LoadTeamTestScene, true, EtherealButton.SelectionStyle.Frame);
+
+        RectTransform rect = shortcut.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = rect.pivot = Vector2.zero;
+        rect.anchoredPosition = new Vector2(48f, 42f);
+    }
+
+    private static void LoadTeamTestScene()
+    {
+        UnityEditor.SceneManagement.EditorSceneManager.LoadSceneInPlayMode(
+            TeamTestScenePath,
+            new LoadSceneParameters(LoadSceneMode.Single));
+    }
+#endif
 
     private void BuildAtmosphere()
     {
@@ -258,10 +301,17 @@ public sealed class BlightedIntroFlow : MonoBehaviour
         progressRail = rail.GetComponent<RectTransform>();
         Center(progressRail, new Vector2(0f, 300f), new Vector2(1600f, 94f));
 
-        const float spacing = 310f;
-        const float columnWidth = 300f;
+        HorizontalLayoutGroup layout = rail.AddComponent<HorizontalLayoutGroup>();
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.spacing = 18f;
+        layout.padding = new RectOffset(20, 20, 10, 10);
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
+
+        const float columnWidth = 294f;
         const float fontSize = 36f;
-        float firstX = -spacing * 2f;
 
         string[] spanish = { "HISTORIA", "MODO DE JUEGO", "NOMBRE", "PERSONAJE", "AJUSTES" };
         string[] english = { "STORY", "GAME MODE", "NAME", "CHARACTER", "SETTINGS" };
@@ -269,8 +319,12 @@ public sealed class BlightedIntroFlow : MonoBehaviour
         {
             int captured = i;
             EtherealButton step = EtherealButton.CreateLocalized(rail.transform, spanish[i], english[i], fontSize,
-                new Vector2(firstX + i * spacing, 0f), new Vector2(columnWidth, 72f), MenuTheme.BoneDim,
-                () => NavigateFromProgress(captured));
+                Vector2.zero, new Vector2(columnWidth, 72f), MenuTheme.BoneDim,
+                () => NavigateFromProgress(captured), false, EtherealButton.SelectionStyle.Underline);
+            LayoutElement element = step.gameObject.AddComponent<LayoutElement>();
+            element.preferredWidth = columnWidth;
+            element.preferredHeight = 72f;
+            element.flexibleWidth = 0f;
             progressButtons.Add(step);
         }
     }
@@ -345,7 +399,7 @@ public sealed class BlightedIntroFlow : MonoBehaviour
         campaign.SetInteractable(false);
         EtherealButton.CreateLocalized(group.transform, "MULTIJUGADOR", "MULTIPLAYER", 34f,
             new Vector2(240f, -35f), new Vector2(430f, 96f), MenuTheme.MarfilEnvejecido,
-            () => GoTo(Phase.Mode), true);
+            OpenMultiplayerChoices, true);
 
         // Logo del estudio en la primera pantalla, como en el boceto del
         // paquete de specs. Solo aquí: repetirlo en cada fase lo devaluaría.
@@ -455,10 +509,28 @@ public sealed class BlightedIntroFlow : MonoBehaviour
     {
         CanvasGroup group = NewPhase(Phase.Mode, "2 - Mode");
 
-        NewText(group.transform, "MODO DE JUEGO", "GAME MODE",
-            new Vector2(0f, 120f), new Vector2(820f, 68f), 44f, MenuTheme.MarfilEnvejecido, true);
-        NewText(group.transform, "Elige el formato de combate", "Choose the battle format",
+        routeChoiceRoot = NewModeSubscreen(group.transform, "Play Route Choice");
+        NewText(routeChoiceRoot.transform, "¿CÓMO QUIERES JUGAR?", "HOW DO YOU WANT TO PLAY?",
+            new Vector2(0f, 120f), new Vector2(940f, 68f), 44f, MenuTheme.MarfilEnvejecido, true);
+        NewText(routeChoiceRoot.transform, "Elige una experiencia", "Choose an experience",
             new Vector2(0f, 62f), new Vector2(820f, 46f), 30f, MenuTheme.BoneDim, false);
+
+        EtherealButton.CreateLocalized(routeChoiceRoot.transform, "ENTRENAR", "TRAIN", 34f,
+            new Vector2(-245f, -55f), new Vector2(440f, 112f), MenuTheme.OroMarchito,
+            BeginTrainingRoute, true);
+        EtherealButton.CreateLocalized(routeChoiceRoot.transform, "JUGAR ONLINE", "PLAY ONLINE", 34f,
+            new Vector2(245f, -55f), new Vector2(440f, 112f), MenuTheme.MarfilEnvejecido,
+            OpenOnlineFormats, true);
+        NewText(routeChoiceRoot.transform, "Duelo local contra la máquina", "Local duel against the machine",
+            new Vector2(-245f, -135f), new Vector2(430f, 52f), 26f, MenuTheme.BoneDim, false);
+        NewText(routeChoiceRoot.transform, "Partidas de dos, cuatro o seis jugadores", "Matches for two, four or six players",
+            new Vector2(245f, -135f), new Vector2(460f, 52f), 26f, MenuTheme.BoneDim, false);
+
+        onlineFormatsRoot = NewModeSubscreen(group.transform, "Online Formats");
+        NewText(onlineFormatsRoot.transform, "JUGAR ONLINE", "PLAY ONLINE",
+            new Vector2(0f, 150f), new Vector2(820f, 68f), 44f, MenuTheme.MarfilEnvejecido, true);
+        NewText(onlineFormatsRoot.transform, "Elige el formato de combate", "Choose the battle format",
+            new Vector2(0f, 92f), new Vector2(820f, 46f), 30f, MenuTheme.BoneDim, false);
 
         // Los tres modos salen del catálogo: añadir uno no toca esta pantalla.
         // Con fondo visible (withBackground): tarjetas, no texto suelto — sin
@@ -468,26 +540,80 @@ public sealed class BlightedIntroFlow : MonoBehaviour
         {
             MatchModeDefinition captured = mode;
             (string titleEs, string titleEn) = ModeTitlePair(mode);
-            EtherealButton modeButton = EtherealButton.CreateLocalized(group.transform, titleEs, titleEn, 58f,
-                new Vector2(x, -65f), new Vector2(275f, 190f), MenuTheme.MarfilEnvejecido,
+            EtherealButton modeButton = EtherealButton.CreateLocalized(onlineFormatsRoot.transform, titleEs, titleEn, 58f,
+                new Vector2(x, -35f), new Vector2(275f, 190f), MenuTheme.MarfilEnvejecido,
                 () => SelectMode(captured), true);
             modeButtons.Add(modeButton);
             visibleModes.Add(captured);
 
             (string taglineEs, string taglineEn) = ModeTaglinePair(mode);
-            NewText(group.transform, taglineEs, taglineEn, new Vector2(x, -135f),
+            NewText(onlineFormatsRoot.transform, taglineEs, taglineEn, new Vector2(x, -105f),
                 new Vector2(270f, 60f), 26f, MenuTheme.BoneDim, false);
             x += 330f;
         }
 
-        EtherealButton.CreateLocalized(group.transform, "CONTINUAR", "CONTINUE", 32f,
-            new Vector2(210f, -275f), new Vector2(320f, 66f), MenuTheme.MarfilEnvejecido,
-            () => GoTo(Phase.Name), true);
-        EtherealButton.CreateLocalized(group.transform, "VOLVER", "BACK", 30f,
-            new Vector2(-210f, -275f), new Vector2(300f, 66f), MenuTheme.BoneDim,
-            () => GoTo(Phase.Path), true);
+        EtherealButton.CreateLocalized(onlineFormatsRoot.transform, "CONTINUAR", "CONTINUE", 32f,
+            new Vector2(210f, -255f), new Vector2(320f, 66f), MenuTheme.MarfilEnvejecido,
+            ContinueOnlineRoute, true);
+        EtherealButton.CreateLocalized(onlineFormatsRoot.transform, "VOLVER", "BACK", 30f,
+            new Vector2(-210f, -255f), new Vector2(300f, 66f), MenuTheme.BoneDim,
+            ShowRouteChoice, true);
 
         SelectMode(selectedMode);
+        ShowRouteChoice();
+    }
+
+    private static GameObject NewModeSubscreen(Transform parent, string name)
+    {
+        GameObject root = new GameObject(name, typeof(RectTransform));
+        root.transform.SetParent(parent, false);
+        Stretch(root.GetComponent<RectTransform>());
+        return root;
+    }
+
+    private void OpenMultiplayerChoices()
+    {
+        selectedRoute = MenuPlayRoute.None;
+        ShowRouteChoice();
+        GoTo(Phase.Mode);
+    }
+
+    private void ShowRouteChoice()
+    {
+        selectedRoute = MenuPlayRoute.None;
+        SetTrainingProgressLayout(false);
+        if (routeChoiceRoot != null) routeChoiceRoot.SetActive(true);
+        if (onlineFormatsRoot != null) onlineFormatsRoot.SetActive(false);
+    }
+
+    private void BeginTrainingRoute()
+    {
+        selectedRoute = MenuPlayRoute.Training;
+        SetTrainingProgressLayout(true);
+        GoTo(Phase.Character);
+    }
+
+    private void OpenOnlineFormats()
+    {
+        selectedRoute = MenuPlayRoute.Online;
+        SetTrainingProgressLayout(false);
+        if (routeChoiceRoot != null) routeChoiceRoot.SetActive(false);
+        if (onlineFormatsRoot != null) onlineFormatsRoot.SetActive(true);
+    }
+
+    private void ContinueOnlineRoute()
+    {
+        selectedRoute = MenuPlayRoute.Online;
+        MatchContext.Select(selectedMode);
+        GoTo(Phase.Name);
+    }
+
+    private void SetTrainingProgressLayout(bool training)
+    {
+        if (progressButtons.Count < 5) return;
+        progressButtons[2].gameObject.SetActive(!training);
+        // HorizontalLayoutGroup redistribuye automáticamente cuatro o cinco
+        // columnas con el mismo ancho; no hay offsets manuales por palabra.
     }
 
     private void SelectMode(MatchModeDefinition mode)
@@ -555,15 +681,11 @@ public sealed class BlightedIntroFlow : MonoBehaviour
         RefreshCharacterPreview();
 
         float actionsY = belowFrame - 170f;
-        EtherealButton.CreateLocalized(group.transform, "JUGAR ONLINE", "PLAY ONLINE",
-            30f, new Vector2(215f, actionsY), new Vector2(390f, 70f), MenuTheme.MarfilEnvejecido, ConfirmCharacter, true);
-        EtherealButton.CreateLocalized(group.transform, "ENTRENAR", "TRAIN",
-            30f, new Vector2(-215f, actionsY), new Vector2(390f, 70f), MenuTheme.OroMarchito, TestCharacterLocally, true);
-
-        NewText(group.transform, "Prueba habilidades sin esperar rivales", "Try abilities without waiting for rivals",
-            new Vector2(-215f, actionsY - 50f), new Vector2(410f, 38f), 26f, MenuTheme.BoneDim, false);
-        NewText(group.transform, "Busca una sala del formato elegido", "Finds a room for the chosen format",
-            new Vector2(215f, actionsY - 50f), new Vector2(410f, 38f), 26f, MenuTheme.BoneDim, false);
+        onlineCharacterAction = EtherealButton.CreateLocalized(group.transform, "BUSCAR PARTIDA", "FIND MATCH",
+            30f, new Vector2(0f, actionsY), new Vector2(460f, 70f), MenuTheme.MarfilEnvejecido, ConfirmCharacter, true);
+        trainingCharacterAction = EtherealButton.CreateLocalized(group.transform,
+            "ENTRAR A ENTRENAMIENTO", "ENTER TRAINING",
+            30f, new Vector2(0f, actionsY), new Vector2(520f, 70f), MenuTheme.OroMarchito, TestCharacterLocally, true);
 
         // El fallo de conexión se muestra aquí: es la única fase desde la que
         // se dispara el matchmaking (ConfirmCharacter).
@@ -846,6 +968,13 @@ public sealed class BlightedIntroFlow : MonoBehaviour
 
     private async void ConfirmCharacter()
     {
+        if (selectedRoute != MenuPlayRoute.Online)
+        {
+            ShowStatus(GameLocalization.Choose("Selecciona Jugar online antes de buscar partida.",
+                "Choose Play online before finding a match."));
+            return;
+        }
+
         if (lobbyManager == null)
         {
             ShowStatus(GameLocalization.Choose("No se encontro el servicio multijugador.", "Multiplayer service not found."));
@@ -862,6 +991,8 @@ public sealed class BlightedIntroFlow : MonoBehaviour
 
     private void TestCharacterLocally()
     {
+        if (selectedRoute != MenuPlayRoute.Training) return;
+
         int characterToTest = selectedCharacter;
         PlayerPrefs.SetInt("SelectedCharacterIndex", characterToTest);
         PlayerPrefs.Save();
@@ -871,13 +1002,16 @@ public sealed class BlightedIntroFlow : MonoBehaviour
         void SpawnAfterLoad(Scene scene, LoadSceneMode mode)
         {
             SceneManager.sceneLoaded -= SpawnAfterLoad;
-            // OnlineArena ya contiene el rig jugable completo. Al cargarla en
-            // contexto local, ese rig toma la selección guardada y habilita
-            // movimiento/poderes sin Photon. El fallback cubre una escena de
-            // pruebas que no tenga rig preinstalado.
+            // La referencia de Player serializada en OnlineArena permanece
+            // desactivada para no escalar collider, NavMesh ni VFX. Entrenamiento
+            // crea el mismo rig raíz (escala 1) que Movement y el online.
             if (FindFirstObjectByType<PlayerController>() == null)
             {
                 GameObject host = new GameObject("Local Character Test");
+                PlayerController sceneReference = FindFirstObjectByType<PlayerController>(FindObjectsInactive.Include);
+                host.transform.SetPositionAndRotation(
+                    sceneReference != null ? sceneReference.transform.position : PlayerSpawner.ArenaCenter,
+                    sceneReference != null ? sceneReference.transform.rotation : Quaternion.identity);
                 CharacterSpawner spawner = host.AddComponent<CharacterSpawner>();
                 spawner.SpawnSelectedCharacter(characterToTest);
             }
@@ -949,8 +1083,8 @@ public sealed class BlightedIntroFlow : MonoBehaviour
         NewText(group.transform, "Controles", "Controls",
             new Vector2(0f, -145f), new Vector2(700f, 42f), 26f, MenuTheme.BoneDim, false);
         NewText(group.transform,
-                "WASD o clic — moverse      Q — ataque      E — definitiva",
-                "WASD or click — move      Q — attack      E — ultimate",
+                "WASD o clic — moverse      Q — ataque      E — definitiva      TAB — fijar rival",
+                "WASD or click — move      Q — attack      E — ultimate      TAB — lock target",
             new Vector2(0f, -190f), new Vector2(1000f, 50f), 26f, MenuTheme.Bone, false);
 
         EtherealButton.CreateLocalized(group.transform, "Volver", "Back",
@@ -1067,37 +1201,12 @@ public sealed class BlightedIntroFlow : MonoBehaviour
 
     // ------------------------------------------------------------ transiciones
 
-    private void BuildBackButton()
-    {
-        // Anclado a la esquina real (no al centro + un offset grande): con
-        // un offset fijo desde el centro, cualquier ventana más ancha que
-        // 16:9 podía dejarlo fuera del borde visible. Anclado a la esquina,
-        // el margen es siempre el mismo sin importar el aspecto. Con fondo
-        // visible: sin él, un icono suelto de un solo carácter se perdía
-        // contra el fondo estrellado.
-        backButton = EtherealButton.Create(canvas.transform, "<", 32f,
-            new Vector2(80f, -80f), new Vector2(74f, 74f), MenuTheme.SpectralWhite, GoBack, true);
-        AnchorTopLeft(backButton.GetComponent<RectTransform>());
-        backButton.gameObject.SetActive(false);
-    }
-
-    private void GoBack()
-    {
-        switch (flow.Current)
-        {
-            case Phase.Mode: GoTo(Phase.Prologue); break;
-            case Phase.Name: GoTo(Phase.Mode); break;
-            case Phase.Character: GoTo(Phase.Name); break;
-        }
-    }
-
     private void GoTo(Phase next) => flow.GoTo(next);
 
     private void OnTransitionStarted(Phase next)
     {
-        // El botón de volver y el de ajustes se ocultan durante el cruce:
-        // verlos saltar entre fases delata la transición.
-        if (backButton != null) backButton.gameObject.SetActive(false);
+        // La navegación hacia atrás vive en los CTAs contextuales y en los
+        // pasos ya completados del índice; no hay una flecha global flotante.
     }
 
     private void OnPhaseChanged(Phase next)
@@ -1111,13 +1220,22 @@ public sealed class BlightedIntroFlow : MonoBehaviour
     private void OnPhaseShown(Phase next)
     {
         RefreshProgressRail(next);
-        if (backButton != null)
-            backButton.gameObject.SetActive(next == Phase.Name || next == Phase.Mode || next == Phase.Character);
 
         if (next == Phase.Name && nameField != null)
         {
             nameField.Select();
             nameField.ActivateInputField();
+        }
+
+        if (next == Phase.Mode && selectedRoute == MenuPlayRoute.None)
+            ShowRouteChoice();
+
+        if (next == Phase.Character)
+        {
+            if (trainingCharacterAction != null)
+                trainingCharacterAction.gameObject.SetActive(selectedRoute == MenuPlayRoute.Training);
+            if (onlineCharacterAction != null)
+                onlineCharacterAction.gameObject.SetActive(selectedRoute == MenuPlayRoute.Online);
         }
 
         if (next == Phase.Prologue) prologue.Play();
@@ -1171,6 +1289,7 @@ public sealed class BlightedIntroFlow : MonoBehaviour
         text.alignment = TextAlignmentOptions.Center;
         text.textWrappingMode = TextWrappingModes.Normal;
         text.raycastTarget = false;
+        text.margin = new Vector4(12f, 6f, 12f, 6f);
 
         if (display) MenuTheme.ApplyDisplayFont(text);
         else MenuTheme.ApplyBodyFont(text);
@@ -1194,11 +1313,6 @@ public sealed class BlightedIntroFlow : MonoBehaviour
     private static void AnchorToTop(RectTransform rect)
     {
         rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 1f);
-    }
-
-    private static void AnchorTopLeft(RectTransform rect)
-    {
-        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0f, 1f);
     }
 
     private static void Center(RectTransform rect, Vector2 position, Vector2 size)

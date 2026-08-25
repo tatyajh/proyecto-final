@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2817e9c0054ee5fe2f884cc39fab785a, type: 3}
   m_Name: Lunara
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier:
   characterName: Lunara
   prefabPath: Characters/Lunara
   portraitPath:
@@ -20,5 +20,7 @@ MonoBehaviour:
   tint: {r: 0.34, g: 0.48, b: 0.76, a: 1}
   previewScale: 1
   previewYaw: 180
+  expectedGameplayHeight: 5.0654445
+  modelLocalOffset: {x: 0, y: 0.0665, z: 0}
   basicAbility: {fileID: 11400000, guid: 9827aa0bf6133134ead0ce92937ef24d, type: 2}
   ultimateAbility: {fileID: 11400000, guid: 3fe333460d71d9f4fb03c940d0bc5e0e, type: 2}

@@ -21,8 +21,8 @@ MonoBehaviour:
   radius: 0.75
   coneAngle: 55
   castDelay: 0
-  damage: 20
-  cooldown: 1
+  damage: 8
+  cooldown: 3
   hostileEffect: 0
   hostileEffectDuration: 0
   hostileEffectStrength: 0
@@ -30,3 +30,4 @@ MonoBehaviour:
   alliedEffectDuration: 2
   alliedEffectStrength: 0.3
   vfxColor: {r: 0.42, g: 0.82, b: 0.36, a: 1}
+  castSfx: {fileID: 8300000, guid: 3cc826ae2ec61c349a5445a515ad0463, type: 3}

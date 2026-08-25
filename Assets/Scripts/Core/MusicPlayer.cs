@@ -1,6 +1,7 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.Audio;
+using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Singleton persistente (DontDestroyOnLoad) que reproduce la música de
@@ -10,6 +11,9 @@ using UnityEngine.Audio;
 /// </summary>
 public class MusicPlayer : MonoBehaviour
 {
+    private const string IntroMusicResource = "Audio/Music/Botanical_Decay";
+    private const string ArenaMusicResource = "Audio/Music/TreeOfAbundance";
+
     public static MusicPlayer Instance { get; private set; }
 
     private AudioSource sourceA;
@@ -46,6 +50,37 @@ public class MusicPlayer : MonoBehaviour
             source.outputAudioMixerGroup = musicGroup;
         }
         activeSource = sourceA;
+        SceneManager.sceneLoaded -= HandleSceneLoaded;
+        SceneManager.sceneLoaded += HandleSceneLoaded;
+    }
+
+    private void OnDestroy()
+    {
+        SceneManager.sceneLoaded -= HandleSceneLoaded;
+        if (Instance == this) Instance = null;
+    }
+
+    private void HandleSceneLoaded(Scene scene, LoadSceneMode mode) => PlayForScene(scene);
+
+    public void PlayForScene(Scene scene)
+    {
+        string resource = scene.name switch
+        {
+            GameScenes.Intro => IntroMusicResource,
+            GameScenes.Arena => ArenaMusicResource,
+            "Movement" => ArenaMusicResource,
+            _ => null
+        };
+
+        if (string.IsNullOrEmpty(resource))
+        {
+            Stop(0.8f);
+            return;
+        }
+
+        AudioClip clip = Resources.Load<AudioClip>(resource);
+        if (clip != null) PlayMusic(clip, 1.5f);
+        else Debug.LogWarning($"[MusicPlayer] No se encontró Resources/{resource}.");
     }
 
     private static AudioMixerGroup LoadMusicGroup()
@@ -59,7 +94,16 @@ public class MusicPlayer : MonoBehaviour
 
     public void PlayMusic(AudioClip clip, float fadeSeconds = 1.5f)
     {
-        if (clip == null || activeSource.clip == clip) return;
+        if (clip == null) return;
+        if (activeSource.clip == clip)
+        {
+            if (!activeSource.isPlaying)
+            {
+                activeSource.volume = 1f;
+                activeSource.Play();
+            }
+            return;
+        }
 
         if (fadeRoutine != null) StopCoroutine(fadeRoutine);
         fadeRoutine = StartCoroutine(CrossfadeTo(clip, fadeSeconds));

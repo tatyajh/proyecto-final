@@ -7,6 +7,7 @@ using UnityEngine;
 public static class LocalCharacterTestTool
 {
     private const string ArenaPath = "Assets/Scenes/Multiplayer/OnlineArena.unity";
+    private const string MovementPath = "Assets/Scenes/Testing/Movement.unity";
     private const string IntroPath = "Assets/Scenes/Menus/Blighted Intro.unity";
     private const string SmokeKey = "BlightedBlossoms.LocalCharacterSmoke";
     private static int smokeFrames;
@@ -30,7 +31,23 @@ public static class LocalCharacterTestTool
         OnlineMatchState.Reset();
         EditorSceneManager.playModeStartScene = arena;
         SessionState.SetBool(SmokeKey, true);
-        Debug.Log("[LocalCharacterTest] Iniciando arena sin matchmaking. WASD/clic mueve, Q ataca y E usa la definitiva.");
+        Debug.Log("[LocalCharacterTest] Iniciando arena sin matchmaking. WASD/clic mueve, Q ataca, E usa la definitiva y Tab fija al rival.");
+        EditorApplication.isPlaying = true;
+    }
+
+    [MenuItem("Blighted Blossoms/Pruebas/Abrir entrenamiento _F7", false, 39)]
+    public static void PlayMovementTraining()
+    {
+        if (EditorApplication.isPlaying)
+        {
+            EditorApplication.isPlaying = false;
+            return;
+        }
+        PlayModeContext.UseTraining();
+        OnlineMatchState.Reset();
+        EditorSceneManager.OpenScene(MovementPath);
+        EditorSceneManager.playModeStartScene = null;
+        Debug.Log("[LocalCharacterTest] Movement inicia directamente como duelo de entrenamiento.");
         EditorApplication.isPlaying = true;
     }
 

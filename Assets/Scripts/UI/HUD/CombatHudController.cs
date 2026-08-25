@@ -11,10 +11,10 @@ using UIScripts;
 [DisallowMultipleComponent]
 public sealed class CombatHudController : MonoBehaviour
 {
-    private static readonly Color Panel = new Color(0.025f, 0.018f, 0.03f, 0.78f);
-    private static readonly Color Gold = new Color(0.72f, 0.57f, 0.27f, 1f);
-    private static readonly Color Ivory = new Color(0.94f, 0.91f, 0.82f, 1f);
-    private static readonly Color Plum = new Color(0.20f, 0.09f, 0.17f, 0.92f);
+    private static readonly Color Panel = MenuTheme.WithAlpha(MenuTheme.HudPanel, 0.86f);
+    private static readonly Color Gold = MenuTheme.HudMossBright;
+    private static readonly Color Ivory = MenuTheme.HudIvory;
+    private static readonly Color Plum = MenuTheme.WithAlpha(MenuTheme.HudAshDark, 0.94f);
 
     private PlayerController player;
     private GameObject hudRoot;
@@ -23,15 +23,31 @@ public sealed class CombatHudController : MonoBehaviour
     private Image healthFill;
     private TMP_Text teamLabel;
     private TMP_Text statusLabel;
+    private TMP_Text arenaStatusLabel;
     private GameObject confirmationPanel;
     private TMP_Text confirmationWarning;
     private GameObject resultPanel;
     private TMP_Text resultLabel;
     private GameObject trainingPanel;
     private TMP_Text trainingLabel;
+    private CombatTrainingBootstrap training;
+    private TMP_Text opponentNameLabel;
+    private TMP_Text opponentHealthLabel;
+    private Image opponentHealthFill;
     private GameObject blindOverlay;
     private AbilityOverlay basicOverlay;
     private AbilityOverlay ultimateOverlay;
+    private Button lockButton;
+    private TMP_Text lockButtonLabel;
+    private CanvasGroup inputHintGroup;
+    private float inputHintStartedAt = -1f;
+    private bool resultPresentationSuppressed;
+    private bool usesTouchControls;
+    private static Sprite healthFrameSprite;
+    private static Sprite abilityFrameSprite;
+    private static Sprite modalFrameSprite;
+    private static Sprite hudButtonFrameSprite;
+    private static Sprite controlHintFrameSprite;
 
     private sealed class AbilityOverlay
     {
@@ -90,8 +106,8 @@ public sealed class CombatHudController : MonoBehaviour
 
         RectTransform identity = CreatePanel(root, "Player status", new Vector2(0f, -22f),
             new Vector2(470f, 122f), TextAnchor.UpperCenter, Panel);
-        nameLabel = CreateText(identity, "Name", string.Empty, 32, Ivory, FontStyles.Bold);
-        Anchor(nameLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -12f), new Vector2(430f, 40f));
+        nameLabel = CreateText(identity, "Name", string.Empty, 36, Gold, FontStyles.Bold);
+        Anchor(nameLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -8f), new Vector2(440f, 46f));
 
         RectTransform healthTrack = CreatePanel(identity, "Health", new Vector2(0f, -62f),
             new Vector2(400f, 32f), TextAnchor.UpperCenter, new Color(0.04f, 0.025f, 0.035f, 0.95f));
@@ -101,8 +117,10 @@ public sealed class CombatHudController : MonoBehaviour
         healthFill.rectTransform.pivot = new Vector2(0f, 0.5f);
         healthFill.rectTransform.offsetMin = new Vector2(3f, 3f);
         healthFill.rectTransform.offsetMax = new Vector2(-3f, -3f);
-        healthLabel = CreateText(healthTrack, "Health value", string.Empty, 24, Ivory, FontStyles.Bold);
+        healthLabel = CreateText(healthTrack, "Health value", string.Empty, 30, Ivory, FontStyles.Bold);
         Stretch(healthLabel.rectTransform);
+        AddHealthFrame(healthTrack);
+        nameLabel.transform.SetAsLastSibling();
 
         teamLabel = CreateText(root, "Team", string.Empty, 22, Ivory, FontStyles.Bold);
         Anchor(teamLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -150f), new Vector2(680f, 32f));
@@ -110,10 +128,18 @@ public sealed class CombatHudController : MonoBehaviour
         statusLabel = CreateText(root, "Network status", string.Empty, 22, Ivory, FontStyles.Normal);
         Anchor(statusLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -188f), new Vector2(760f, 64f));
 
+        arenaStatusLabel = CreateText(root, "Arena status", string.Empty, 26,
+            new Color(0.92f, 0.42f, 0.48f), FontStyles.Bold);
+        Anchor(arenaStatusLabel.rectTransform, new Vector2(0.5f, 1f),
+            new Vector2(0f, -252f), new Vector2(820f, 42f));
+
         BuildConfirmation(root);
         BuildResult(root);
         BuildTrainingControls(root);
-        BindAbilityOverlays();
+        usesTouchControls = Application.isMobilePlatform ||
+                            (Input.touchSupported && SystemInfo.deviceType == DeviceType.Handheld);
+        if (usesTouchControls) BuildTargetLock(root);
+        BuildInputPresentation(root);
         Image blind = CreateImage(root, "Blind effect", new Color(0.015f, 0.008f, 0.02f, 0.78f));
         Stretch(blind.rectTransform);
         blind.raycastTarget = false;
@@ -128,7 +154,7 @@ public sealed class CombatHudController : MonoBehaviour
         RectTransform panel = CreatePanel(root, "Exit confirmation", Vector2.zero,
             new Vector2(560f, 250f), TextAnchor.MiddleCenter, new Color(0.025f, 0.018f, 0.03f, 0.96f));
         confirmationPanel = panel.gameObject;
-        CreateBorder(panel);
+        ApplyModalFrame(panel);
 
         TMP_Text title = CreateText(panel, "Title",
             GameLocalization.Choose("¿ABANDONAR LA PARTIDA?", "LEAVE THE MATCH?"), 34, Gold, FontStyles.Bold);
@@ -150,45 +176,145 @@ public sealed class CombatHudController : MonoBehaviour
 
     private void BuildResult(RectTransform root)
     {
-        RectTransform panel = CreatePanel(root, "Match result", new Vector2(0f, -225f),
-            new Vector2(520f, 180f), TextAnchor.UpperCenter, new Color(0.025f, 0.018f, 0.03f, 0.94f));
+        Image dimmer = CreateImage(root, "Result backdrop", new Color(0.015f, 0.02f, 0.018f, 0.58f));
+        Stretch(dimmer.rectTransform);
+        dimmer.raycastTarget = true;
+
+        RectTransform panel = CreatePanel(dimmer.transform, "Match result", Vector2.zero,
+            new Vector2(680f, 330f), TextAnchor.MiddleCenter, MenuTheme.WithAlpha(MenuTheme.HudPanel, 0.98f));
         resultPanel = panel.gameObject;
-        CreateBorder(panel);
+        ApplyModalFrame(panel);
 
-        resultLabel = CreateText(panel, "Result", string.Empty, 42, Gold, FontStyles.Bold);
-        Anchor(resultLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -22f), new Vector2(480f, 48f));
+        resultLabel = CreateText(panel, "Result", string.Empty, 50, Gold, FontStyles.Bold);
+        Anchor(resultLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -66f), new Vector2(560f, 68f));
 
-        Button again = CreateButton(panel, "Play again", GameLocalization.Choose("JUGAR OTRA VEZ", "PLAY AGAIN"),
-            new Vector2(-125f, 22f), new Vector2(220f, 52f), TextAnchor.LowerCenter);
+        string replayCaption = PlayModeContext.Current == PlayMode.Training
+            ? GameLocalization.Choose("REVANCHA", "REMATCH")
+            : GameLocalization.Choose("JUGAR OTRA VEZ", "PLAY AGAIN");
+        Button again = CreateButton(panel, "Play again", replayCaption,
+            new Vector2(-150f, 58f), new Vector2(260f, 72f), TextAnchor.LowerCenter);
         again.onClick.AddListener(player.PlayAgain);
         Button exit = CreateButton(panel, "Exit result", GameLocalization.Choose("SALIR AL MENÚ", "EXIT TO MENU"),
-            new Vector2(125f, 22f), new Vector2(220f, 52f), TextAnchor.LowerCenter);
+            new Vector2(150f, 58f), new Vector2(260f, 72f), TextAnchor.LowerCenter);
         exit.onClick.AddListener(player.ExitToMenu);
-        resultPanel.SetActive(false);
+        dimmer.gameObject.SetActive(false);
+        resultPanel = dimmer.gameObject;
     }
 
     private void BuildTrainingControls(RectTransform root)
     {
-        CombatTrainingBootstrap training = FindFirstObjectByType<CombatTrainingBootstrap>();
+        training = FindFirstObjectByType<CombatTrainingBootstrap>();
         if (training == null) return;
 
-        RectTransform panel = CreatePanel(root, "Training controls", new Vector2(-24f, -24f),
-            new Vector2(450f, 136f), TextAnchor.UpperRight, Panel);
+        RectTransform panel = CreatePanel(root, "Training opponent", new Vector2(-26f, -24f),
+            new Vector2(430f, 122f), TextAnchor.UpperRight, Panel);
         trainingPanel = panel.gameObject;
-        trainingLabel = CreateText(panel, "Training hint",
-            GameLocalization.Choose("ENTRENAMIENTO · T reinicia objetivos", "TRAINING · T resets targets"),
-            26, Ivory, FontStyles.Bold);
-        Anchor(trainingLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -14f), new Vector2(420f, 42f));
+        CreateBorder(panel);
+        opponentNameLabel = CreateText(panel, "Opponent name",
+            GameLocalization.Choose("RIVAL · PREPARANDO", "RIVAL · PREPARING"), 34, Gold, FontStyles.Bold);
+        Anchor(opponentNameLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -8f), new Vector2(400f, 46f));
 
-        Button reset = CreateButton(panel, "Reset targets", GameLocalization.Choose("REINICIAR OBJETIVOS", "RESET TARGETS"),
-            new Vector2(0f, 16f), new Vector2(370f, 58f), TextAnchor.LowerCenter);
-        reset.onClick.AddListener(training.ResetTargets);
+        RectTransform healthTrack = CreatePanel(panel, "Opponent health", new Vector2(0f, -62f),
+            new Vector2(370f, 32f), TextAnchor.UpperCenter, new Color(0.04f, 0.025f, 0.035f, 0.95f));
+        opponentHealthFill = CreateImage(healthTrack, "Fill", new Color(0.78f, 0.22f, 0.22f, 1f));
+        opponentHealthFill.rectTransform.anchorMin = new Vector2(0f, 0f);
+        opponentHealthFill.rectTransform.anchorMax = new Vector2(1f, 1f);
+        opponentHealthFill.rectTransform.pivot = new Vector2(0f, 0.5f);
+        opponentHealthFill.rectTransform.offsetMin = new Vector2(3f, 3f);
+        opponentHealthFill.rectTransform.offsetMax = new Vector2(-3f, -3f);
+        opponentHealthLabel = CreateText(healthTrack, "Opponent health value", string.Empty, 29, Ivory, FontStyles.Bold);
+        Stretch(opponentHealthLabel.rectTransform);
+        AddHealthFrame(healthTrack);
+        opponentNameLabel.transform.SetAsLastSibling();
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-        trainingLabel.text = GameLocalization.Choose(
-            "ENTRENAMIENTO · 1–6 personaje · T objetivos",
-            "TRAINING · 1–6 character · T targets");
+        trainingLabel = CreateText(root, "Training hint",
+            GameLocalization.Choose("1–6 cambia personaje · T nuevo duelo", "1–6 changes character · T new duel"),
+            22, Ivory, FontStyles.Normal);
+        Anchor(trainingLabel.rectTransform, new Vector2(1f, 1f), new Vector2(-26f, -156f), new Vector2(430f, 34f));
 #endif
+    }
+
+    private void BuildTargetLock(RectTransform root)
+    {
+        lockButton = CreateButton(root, "Target lock",
+            GameLocalization.Choose("FIJAR RIVAL", "LOCK TARGET"),
+            new Vector2(0f, 142f), new Vector2(320f, 72f), TextAnchor.LowerCenter);
+        lockButton.onClick.AddListener(() => player?.Targeting?.ToggleLock());
+        lockButtonLabel = lockButton.GetComponentInChildren<TMP_Text>();
+    }
+
+    private void BuildInputPresentation(RectTransform root)
+    {
+        if (usesTouchControls)
+        {
+            BindAbilityOverlays();
+            return;
+        }
+
+        foreach (VirtualJoystick joystick in FindObjectsByType<VirtualJoystick>(
+                     FindObjectsInactive.Include, FindObjectsSortMode.None))
+            joystick.gameObject.SetActive(false);
+        foreach (AttackJoystick joystick in FindObjectsByType<AttackJoystick>(
+                     FindObjectsInactive.Include, FindObjectsSortMode.None))
+            joystick.gameObject.SetActive(false);
+
+        RectTransform help = CreatePanel(root, "PC controls", new Vector2(0f, 28f),
+            new Vector2(660f, 72f), TextAnchor.LowerCenter, MenuTheme.WithAlpha(MenuTheme.HudPanel, 0.82f));
+        Sprite hintFrame = HudControlHintSprite();
+        if (hintFrame != null)
+        {
+            Image helpImage = help.GetComponent<Image>();
+            helpImage.sprite = hintFrame;
+            helpImage.type = Image.Type.Sliced;
+            helpImage.color = Color.white;
+        }
+        else CreateBorder(help);
+        TMP_Text hint = CreateText(help, "Keys",
+            GameLocalization.Choose("WASD · MOVER       TAB · FIJAR RIVAL",
+                "WASD · MOVE       TAB · LOCK TARGET"),
+            27, Ivory, FontStyles.Bold);
+        Stretch(hint.rectTransform);
+        hint.rectTransform.offsetMin = new Vector2(54f, 12f);
+        hint.rectTransform.offsetMax = new Vector2(-54f, -12f);
+        inputHintGroup = help.gameObject.AddComponent<CanvasGroup>();
+
+        basicOverlay = CreateDesktopAbilityOverlay(root, "Q", new Vector2(-266f, 104f));
+        ultimateOverlay = CreateDesktopAbilityOverlay(root, "E", new Vector2(-26f, 104f));
+    }
+
+    private AbilityOverlay CreateDesktopAbilityOverlay(RectTransform root, string key, Vector2 position)
+    {
+        RectTransform panel = CreatePanel(root, $"{key} ability", position,
+            new Vector2(220f, 190f), TextAnchor.LowerRight, Plum);
+        Sprite frame = HudAbilitySprite();
+        Image background = panel.GetComponent<Image>();
+        if (frame != null)
+        {
+            background.sprite = frame;
+            background.color = Color.white;
+            background.type = Image.Type.Simple;
+            background.preserveAspect = true;
+        }
+
+        Image fill = CreateImage(panel, "Cooldown fill", new Color(0.04f, 0.025f, 0.05f, 0.72f));
+        Stretch(fill.rectTransform);
+        fill.rectTransform.offsetMin = new Vector2(24f, 22f);
+        fill.rectTransform.offsetMax = new Vector2(-24f, -22f);
+        fill.sprite = RuntimeSprite();
+        fill.type = Image.Type.Filled;
+        fill.fillMethod = Image.FillMethod.Radial360;
+        fill.fillOrigin = 2;
+        fill.fillClockwise = false;
+        fill.raycastTarget = false;
+
+        TMP_Text label = CreateText(panel, "Ability", key, 38, Ivory, FontStyles.Bold);
+        Stretch(label.rectTransform);
+        label.rectTransform.offsetMin = new Vector2(22f, 22f);
+        label.rectTransform.offsetMax = new Vector2(-22f, -22f);
+        label.enableAutoSizing = false;
+        label.raycastTarget = false;
+        return new AbilityOverlay { Root = panel.gameObject, Fill = fill, Label = label, Key = key, Duration = 1f };
     }
 
     private void BindAbilityOverlays()
@@ -197,7 +323,7 @@ public sealed class CombatHudController : MonoBehaviour
         {
             bool ultimate = joystick.name.ToLowerInvariant().Contains("ultimate");
             AbilityOverlay overlay = CreateAbilityOverlay(joystick.transform as RectTransform,
-                ultimate ? "R" : "Q", ultimate ? 8f : 1f);
+                ultimate ? "E" : "Q", ultimate ? 15f : 3f);
             if (ultimate) ultimateOverlay = overlay;
             else basicOverlay = overlay;
         }
@@ -213,8 +339,21 @@ public sealed class CombatHudController : MonoBehaviour
         Stretch(rect);
         root.transform.SetAsLastSibling();
 
+        Sprite frame = HudAbilitySprite();
+        if (frame != null)
+        {
+            Image decoration = CreateImage(rect, "Ability frame", Color.white);
+            decoration.sprite = frame;
+            decoration.type = Image.Type.Simple;
+            decoration.preserveAspect = true;
+            decoration.raycastTarget = false;
+            Stretch(decoration.rectTransform);
+        }
+
         Image fill = CreateImage(rect, "Cooldown fill", new Color(0.04f, 0.025f, 0.05f, 0.72f));
         Stretch(fill.rectTransform);
+        fill.rectTransform.offsetMin = new Vector2(18f, 18f);
+        fill.rectTransform.offsetMax = new Vector2(-18f, -18f);
         fill.sprite = RuntimeSprite();
         fill.type = Image.Type.Filled;
         fill.fillMethod = Image.FillMethod.Radial360;
@@ -237,9 +376,11 @@ public sealed class CombatHudController : MonoBehaviour
             return;
         }
 
-        nameLabel.text = player.PlayerDisplayName;
-        healthLabel.text = $"{GameLocalization.Choose("VIDA", "HEALTH")}  {player.CurrentHealth} / {PlayerController.MaxHealth}";
+        nameLabel.text = training != null
+            ? $"{GameLocalization.Choose("TÚ", "YOU")} · {player.PlayerDisplayName.ToUpperInvariant()}"
+            : player.PlayerDisplayName.ToUpperInvariant();
         float health = Mathf.Clamp01(player.CurrentHealth / (float)PlayerController.MaxHealth);
+        healthLabel.text = $"{GameLocalization.Choose("VIDA", "HEALTH")}  {Mathf.CeilToInt(health * 100f)}%";
         healthFill.rectTransform.anchorMax = new Vector2(health, 1f);
         healthFill.color = health > 0.35f ? new Color(0.27f, 0.72f, 0.39f) : new Color(0.78f, 0.22f, 0.22f);
 
@@ -250,6 +391,11 @@ public sealed class CombatHudController : MonoBehaviour
         teamLabel.color = player.TeamDisplayColor;
         statusLabel.text = player.NetworkStatusText;
         statusLabel.gameObject.SetActive(!string.IsNullOrWhiteSpace(statusLabel.text));
+        string arenaStatus = ArenaPowerUpManager.Instance != null
+            ? ArenaPowerUpManager.Instance.StatusText
+            : string.Empty;
+        arenaStatusLabel.text = arenaStatus;
+        arenaStatusLabel.gameObject.SetActive(!string.IsNullOrWhiteSpace(arenaStatus));
 
         UpdateAbility(basicOverlay, player.BasicCooldownRemaining, player.BasicCooldownDuration, player.BasicAbilityName);
         UpdateAbility(ultimateOverlay, player.UltimateCooldownRemaining, player.UltimateCooldownDuration, player.UltimateAbilityName);
@@ -258,9 +404,76 @@ public sealed class CombatHudController : MonoBehaviour
         confirmationPanel.SetActive(player.ExitConfirmationVisible);
 
         string result = player.MatchResultText;
-        resultPanel.SetActive(!string.IsNullOrEmpty(result));
+        bool resultVisible = !string.IsNullOrEmpty(result);
+        resultPanel.SetActive(resultVisible);
+        if (resultVisible) resultPanel.transform.SetAsLastSibling();
         resultLabel.text = result;
         blindOverlay.SetActive(player.IsBlinded);
+
+        if (resultPresentationSuppressed != resultVisible)
+        {
+            resultPresentationSuppressed = resultVisible;
+            ArenaPowerUpManager.Instance?.SetPresentationSuppressed(resultVisible);
+        }
+
+        UpdateInputHint(resultVisible);
+
+        if (lockButtonLabel != null)
+        {
+            CombatTargetingController targeting = player.Targeting;
+            lockButtonLabel.text = targeting != null && targeting.HasTarget
+                ? GameLocalization.Choose($"SOLTAR · {targeting.TargetName.ToUpperInvariant()}",
+                    $"RELEASE · {targeting.TargetName.ToUpperInvariant()}")
+                : GameLocalization.Choose("FIJAR RIVAL", "LOCK TARGET");
+            Image lockImage = lockButton.targetGraphic as Image;
+            if (lockImage != null)
+            {
+                Sprite frame = HudButtonSprite(targeting != null && targeting.HasTarget);
+                if (frame != null) lockImage.sprite = frame;
+                lockImage.type = frame != null ? Image.Type.Sliced : Image.Type.Simple;
+                lockImage.color = frame != null
+                    ? (targeting != null && targeting.HasTarget
+                        ? MenuTheme.WithAlpha(MenuTheme.HudMossBright, 0.96f)
+                        : Color.white)
+                    : (targeting != null && targeting.HasTarget
+                        ? MenuTheme.WithAlpha(MenuTheme.HudMoss, 0.96f)
+                        : Plum);
+            }
+        }
+
+        if (trainingPanel != null)
+        {
+            PlayerController opponent = training != null ? training.Opponent : null;
+            bool visible = opponent != null;
+            trainingPanel.SetActive(visible);
+            if (visible)
+            {
+                opponentNameLabel.text = $"{GameLocalization.Choose("RIVAL", "RIVAL")} · " +
+                                         opponent.PlayerDisplayName.ToUpperInvariant();
+                float opponentHealth = Mathf.Clamp01(opponent.CurrentHealth / (float)PlayerController.MaxHealth);
+                opponentHealthLabel.text = $"{GameLocalization.Choose("VIDA", "HEALTH")}  {Mathf.CeilToInt(opponentHealth * 100f)}%";
+                opponentHealthFill.rectTransform.anchorMax = new Vector2(opponentHealth, 1f);
+            }
+        }
+    }
+
+    private void UpdateInputHint(bool resultVisible)
+    {
+        if (inputHintGroup == null) return;
+        bool combatStarted = training != null
+            ? training.DuelActive
+            : player.Object == null || (player.MatchReady && OnlineMatchState.CanPlay);
+        if (combatStarted && inputHintStartedAt < 0f) inputHintStartedAt = Time.unscaledTime;
+
+        float alpha = 0f;
+        if (!resultVisible && inputHintStartedAt >= 0f)
+        {
+            float elapsed = Time.unscaledTime - inputHintStartedAt;
+            alpha = elapsed <= 6.5f ? 1f : 1f - Mathf.Clamp01((elapsed - 6.5f) / 0.75f);
+        }
+        inputHintGroup.alpha = alpha;
+        inputHintGroup.blocksRaycasts = false;
+        inputHintGroup.interactable = false;
     }
 
     private static void UpdateAbility(AbilityOverlay overlay, float remaining, float duration, string abilityName)
@@ -268,13 +481,17 @@ public sealed class CombatHudController : MonoBehaviour
         if (overlay == null) return;
         overlay.Duration = Mathf.Max(0.05f, duration);
         overlay.Fill.fillAmount = Mathf.Clamp01(remaining / overlay.Duration);
+        string caption = overlay.Key == "Q"
+            ? GameLocalization.Choose("ATAQUE", "ATTACK")
+            : GameLocalization.Choose("DEFINITIVA", "ULTIMATE");
         overlay.Label.text = remaining > 0f
-            ? $"{abilityName}\n[{overlay.Key}] {remaining:0.0}"
-            : $"{abilityName}\n[{overlay.Key}]";
+            ? $"{overlay.Key}\n<size=55%>{remaining:0.0} s</size>"
+            : $"{overlay.Key}\n<size=50%>{caption}</size>";
     }
 
     private void OnDestroy()
     {
+        ArenaPowerUpManager.Instance?.SetPresentationSuppressed(false);
         if (hudRoot != null) Destroy(hudRoot);
         if (basicOverlay?.Root != null) Destroy(basicOverlay.Root);
         if (ultimateOverlay?.Root != null) Destroy(ultimateOverlay.Root);
@@ -294,17 +511,94 @@ public sealed class CombatHudController : MonoBehaviour
         RectTransform rect = CreatePanel(parent, name, position, size, anchor, Plum);
         Button button = rect.gameObject.AddComponent<Button>();
         button.targetGraphic = rect.GetComponent<Image>();
+        Sprite frame = HudButtonSprite(false);
+        if (frame != null)
+        {
+            button.targetGraphic.GetComponent<Image>().sprite = frame;
+            button.targetGraphic.GetComponent<Image>().type = Image.Type.Sliced;
+            button.targetGraphic.color = Color.white;
+        }
         ColorBlock colors = button.colors;
         colors.normalColor = Color.white;
-        colors.highlightedColor = new Color(1f, 0.86f, 0.58f);
-        colors.pressedColor = new Color(0.75f, 0.58f, 0.30f);
+        colors.highlightedColor = new Color(1f, 0.94f, 0.78f);
+        colors.pressedColor = new Color(0.78f, 0.66f, 0.46f);
         button.colors = colors;
-        CreateBorder(rect);
+        if (frame == null) CreateBorder(rect);
 
         TMP_Text text = CreateText(rect, "Label", caption, 26, Ivory, FontStyles.Bold);
         Stretch(text.rectTransform);
+        text.rectTransform.offsetMin = new Vector2(34f, 14f);
+        text.rectTransform.offsetMax = new Vector2(-34f, -14f);
         text.raycastTarget = false;
         return button;
+    }
+
+    private static Sprite HudButtonSprite(bool selected)
+    {
+        return HudButtonFrameSprite();
+    }
+
+    private static Sprite HudHealthSprite()
+    {
+        return LoadHudSprite("UI/HUD/HealthFrame", ref healthFrameSprite);
+    }
+
+    private static Sprite HudAbilitySprite()
+    {
+        return LoadHudSprite("UI/HUD/AbilityFrame", ref abilityFrameSprite);
+    }
+
+    private static Sprite HudModalSprite()
+    {
+        return LoadHudSprite("UI/HUD/ModalFrame", ref modalFrameSprite);
+    }
+
+    private static Sprite HudButtonFrameSprite()
+    {
+        return LoadHudSprite("UI/HUD/HudButtonFrame", ref hudButtonFrameSprite);
+    }
+
+    private static Sprite HudControlHintSprite()
+    {
+        return LoadHudSprite("UI/HUD/ControlHintFrame", ref controlHintFrameSprite);
+    }
+
+    private static Sprite LoadHudSprite(string resourcePath, ref Sprite cache)
+    {
+        if (cache != null) return cache;
+        cache = Resources.Load<Sprite>(resourcePath);
+        return cache;
+    }
+
+    private static void AddHealthFrame(RectTransform healthTrack)
+    {
+        Sprite frame = HudHealthSprite();
+        if (frame == null) return;
+        Image image = CreateImage(healthTrack, "Ornate health frame", Color.white);
+        image.sprite = frame;
+        image.type = Image.Type.Sliced;
+        image.raycastTarget = false;
+        Stretch(image.rectTransform);
+        image.rectTransform.offsetMin = new Vector2(-24f, -18f);
+        image.rectTransform.offsetMax = new Vector2(24f, 18f);
+        // El centro del marco contiene sombreado decorativo. Si queda como
+        // último sibling tapa el nombre/porcentaje; detrás conserva las
+        // espinas visibles sin ocultar la información esencial.
+        image.transform.SetAsFirstSibling();
+    }
+
+    private static void ApplyModalFrame(RectTransform panel)
+    {
+        Image image = panel.GetComponent<Image>();
+        Sprite frame = HudModalSprite();
+        if (frame == null)
+        {
+            CreateBorder(panel);
+            return;
+        }
+        image.sprite = frame;
+        image.type = Image.Type.Sliced;
+        image.color = Color.white;
     }
 
     private static void CreateBorder(RectTransform parent)
@@ -326,10 +620,13 @@ public sealed class CombatHudController : MonoBehaviour
         text.alignment = TextAlignmentOptions.Center;
         text.color = color;
         text.textWrappingMode = TextWrappingModes.Normal;
-        text.overflowMode = TextOverflowModes.Ellipsis;
+        // Cinzel no incluye el glifo U+2026 en el atlas generado. Unity ya
+        // degradaba Ellipsis a Truncate y emitía un warning en cada rebuild.
+        text.overflowMode = TextOverflowModes.Truncate;
         text.enableAutoSizing = true;
         text.fontSizeMin = Mathf.Max(20f, size * 0.78f);
         text.fontSizeMax = size;
+        text.margin = new Vector4(10f, 5f, 10f, 5f);
         if ((style & FontStyles.Bold) != 0) MenuTheme.ApplyDisplayFont(text);
         else MenuTheme.ApplyBodyFont(text);
         return text;
@@ -353,6 +650,7 @@ public sealed class CombatHudController : MonoBehaviour
             TextAnchor.UpperRight => new Vector2(1f, 1f),
             TextAnchor.MiddleCenter => new Vector2(0.5f, 0.5f),
             TextAnchor.LowerCenter => new Vector2(0.5f, 0f),
+            TextAnchor.LowerRight => new Vector2(1f, 0f),
             _ => new Vector2(0.5f, 0.5f)
         };
         Anchor(rect, point, position, size);
