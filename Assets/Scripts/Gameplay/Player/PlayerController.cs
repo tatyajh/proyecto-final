@@ -599,24 +599,9 @@ public class PlayerController : NetworkBehaviour
 
     private void FitImportedCharacterToCollider(GameObject character)
     {
-        Renderer[] renderers = character.GetComponentsInChildren<Renderer>(true);
-        if (renderers.Length == 0) return;
-
-        Bounds bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++)
-            bounds.Encapsulate(renderers[i].bounds);
-
-        if (bounds.size.y <= 0.001f) return;
-
-        float scale = DesiredCharacterHeight / bounds.size.y;
-        character.transform.localScale *= scale;
-
-        bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++)
-            bounds.Encapsulate(renderers[i].bounds);
-
-        float colliderBottom = transform.position.y - 1f;
-        character.transform.position += Vector3.up * (colliderBottom - bounds.min.y);
+        if (character == null) return;
+    character.transform.localPosition = Vector3.zero;
+    character.transform.localRotation = Quaternion.identity;
     }
 
     private void CreateVisualPart(string partName, PrimitiveType primitiveType, Vector3 position, Vector3 scale, Color color)
