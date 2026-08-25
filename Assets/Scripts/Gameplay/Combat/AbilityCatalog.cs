@@ -71,7 +71,7 @@ namespace Gameplay.Combat
             AbilityShape shape, int damage, float cooldown, float range, float radius,
             CombatEffectKind hostileEffect, float hostileDuration, float hostileStrength,
             CombatEffectKind alliedEffect, float alliedDuration, float alliedStrength, Color color,
-            float castDelay = 0f)
+            float castDelay = 0f, AudioClip castSfx = null)
         {
             AbilityDefinition ability = ScriptableObject.CreateInstance<AbilityDefinition>();
             ability.hideFlags = HideFlags.HideAndDontSave;
@@ -92,6 +92,7 @@ namespace Gameplay.Combat
             ability.alliedEffectDuration = alliedDuration;
             ability.alliedEffectStrength = alliedStrength;
             ability.vfxColor = color;
+            ability.castSfx = castSfx;
             return ability;
         }
     }
