@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a666241ef41b454f80318f299ce973d2, type: 3}
+  m_Name: Terramor_Ultimate
+  m_EditorClassIdentifier: Assembly-CSharp::Gameplay.Combat.AbilityDefinition
+  abilityId: terramor_bastion
+  spanishName: "Basti\xF3n de la Fosa"
+  englishName: Pit Bastion
+  slot: 1
+  shape: 5
+  range: 6
+  radius: 3.5
+  coneAngle: 55
+  castDelay: 0
+  damage: 0
+  cooldown: 8
+  hostileEffect: 6
+  hostileEffectDuration: 0
+  hostileEffectStrength: 2.5
+  alliedEffect: 0
+  alliedEffectDuration: 0
+  alliedEffectStrength: 0
+  vfxColor: {r: 0.48, g: 0.31, b: 0.18, a: 1}

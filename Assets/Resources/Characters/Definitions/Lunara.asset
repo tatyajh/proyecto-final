@@ -15,8 +15,10 @@ MonoBehaviour:
   characterName: Lunara
   prefabPath: Characters/Lunara
   portraitPath: UI/Portraits/LunaraCutout
-  animatorControllerPath: ''
+  animatorControllerPath: Characters/Lunara
   sortOrder: 1
   tint: {r: 0.34, g: 0.48, b: 0.76, a: 1}
   previewScale: 1
   previewYaw: 180
+  basicAbility: {fileID: 11400000, guid: 9827aa0bf6133134ead0ce92937ef24d, type: 2}
+  ultimateAbility: {fileID: 11400000, guid: 3fe333460d71d9f4fb03c940d0bc5e0e, type: 2}

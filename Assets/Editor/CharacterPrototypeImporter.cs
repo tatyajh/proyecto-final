@@ -18,7 +18,8 @@ using Object = UnityEngine.Object;
 public static class CharacterPrototypeImporter
 {
     private const string OutputFolder = "Assets/Resources/Characters";
-    private const string ImportMarker = "BlightedBlossomsPrototypeCharacterV6";
+    private const string MaterialOutputFolder = OutputFolder + "/Materials";
+    private const string ImportMarker = "BlightedBlossomsPrototypeCharacterV8";
 
     private sealed class CharacterSource
     {
@@ -44,6 +45,16 @@ public static class CharacterPrototypeImporter
     private static readonly CharacterSource[] Sources =
     {
         new CharacterSource(
+            "Heliandra",
+            "Assets/Models 3D/Character animation/Newest/Heliandra.fbx",
+            string.Empty,
+            OutputFolder + "/Heliandra.controller"),
+        new CharacterSource(
+            "Lunara",
+            "Assets/Models 3D/Character animation/Newest/Lunara.fbx",
+            string.Empty,
+            OutputFolder + "/Lunara.controller"),
+        new CharacterSource(
             "CampanaPrototype",
             "Assets/Models 3D/Character animation/Newest/Quietmor/Campana sin voz rig.fbx",
             "Assets/Models 3D/Character animation/Newest/Quietmor/Campana sin voz_mat.mat",
@@ -57,7 +68,12 @@ public static class CharacterPrototypeImporter
             "Acatheria",
             "Assets/Models 3D/Character animation/Newest/Acatheria/Perro.fbx",
             "Assets/Models 3D/Character animation/Newest/Acatheria/perro_mat_actualizado.mat",
-            OutputFolder + "/Acatheria.controller")
+            OutputFolder + "/Acatheria.controller"),
+        new CharacterSource(
+            "Terramor",
+            "Assets/Models 3D/Character animation/Newest/Terramor.fbx",
+            string.Empty,
+            OutputFolder + "/Terramor.controller")
     };
 
     static CharacterPrototypeImporter()
@@ -78,6 +94,8 @@ public static class CharacterPrototypeImporter
         {
             AssetDatabase.CreateFolder("Assets/Resources", "Characters");
         }
+        if (!AssetDatabase.IsValidFolder(MaterialOutputFolder))
+            AssetDatabase.CreateFolder(OutputFolder, "Materials");
 
         ConfigurePortraitImporters();
 
@@ -149,7 +167,8 @@ public static class CharacterPrototypeImporter
         foreach (Collider collider in instance.GetComponentsInChildren<Collider>(true))
             Object.DestroyImmediate(collider);
 
-        AssignCharacterMaterial(instance, characterMaterial);
+        if (characterMaterial != null) AssignCharacterMaterial(instance, characterMaterial);
+        else AssignEmbeddedUrpMaterials(instance, source);
         AttachAnimator(instance, source);
 
         GameObject saved = PrefabUtility.SaveAsPrefabAsset(instance, source.PrefabPath);
@@ -170,6 +189,12 @@ public static class CharacterPrototypeImporter
     /// </summary>
     private static Material EnsureCharacterMaterial(CharacterSource source)
     {
+        // Los FBX más recientes traen el material embebido. Cuando no existe
+        // una ruta canónica se conserva ese material en vez de sustituirlo por
+        // uno vacío; Unity lo enlaza al instanciar el modelo.
+        if (string.IsNullOrWhiteSpace(source.MaterialPath))
+            return null;
+
         Material material = AssetDatabase.LoadAssetAtPath<Material>(source.MaterialPath);
         if (material == null)
         {
@@ -177,33 +202,80 @@ public static class CharacterPrototypeImporter
             return null;
         }
 
-        Shader shader = material.shader;
-        if (shader != null && shader.isSupported) return material;
+        UpgradeMaterialToUrp(material);
+        EditorUtility.SetDirty(material);
+        return material;
+    }
 
-        Texture albedo = material.HasProperty("_MainTex") ? material.GetTexture("_MainTex") : null;
-        Texture normal = material.HasProperty("_BumpMap") ? material.GetTexture("_BumpMap") : null;
-        Texture metallic = material.HasProperty("_MetallicMap") ? material.GetTexture("_MetallicMap") : null;
-        Shader fallback = Shader.Find("Standard");
-        if (fallback == null)
+    private static void AssignEmbeddedUrpMaterials(GameObject instance, CharacterSource source)
+    {
+        foreach (Renderer renderer in instance.GetComponentsInChildren<Renderer>(true))
         {
-            Debug.LogError($"[CharacterPrototypeImporter] El shader de {source.CatalogName} no es compatible y no existe Standard.");
-            return material;
-        }
+            Material[] slots = renderer.sharedMaterials;
+            for (int i = 0; i < slots.Length; i++)
+            {
+                Material embedded = slots[i];
+                if (embedded == null) continue;
+                string safeName = string.Concat((embedded.name ?? $"Material{i}")
+                    .Select(character => char.IsLetterOrDigit(character) ? character : '_'));
+                string path = $"{MaterialOutputFolder}/{source.CatalogName}_{safeName}.mat";
+                Material external = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (external == null)
+                {
+                    external = new Material(embedded) { name = $"{source.CatalogName}_{safeName}" };
+                    AssetDatabase.CreateAsset(external, path);
+                }
+                else
+                {
+                    EditorUtility.CopySerialized(embedded, external);
+                    external.name = $"{source.CatalogName}_{safeName}";
+                }
 
-        material.shader = fallback;
-        if (albedo != null) material.SetTexture("_MainTex", albedo);
-        if (normal != null)
+                UpgradeMaterialToUrp(external);
+                EditorUtility.SetDirty(external);
+                slots[i] = external;
+            }
+            renderer.sharedMaterials = slots;
+        }
+    }
+
+    private static void UpgradeMaterialToUrp(Material material)
+    {
+        if (material == null) return;
+        Texture albedo = FirstTexture(material, "_BaseMap", "_MainTex");
+        Texture normal = FirstTexture(material, "_BumpMap", "_NormalMap");
+        Texture metallic = FirstTexture(material, "_MetallicGlossMap", "_MetallicMap");
+        Color color = material.HasProperty("_BaseColor") ? material.GetColor("_BaseColor")
+            : material.HasProperty("_Color") ? material.GetColor("_Color") : Color.white;
+
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+        if (shader == null) return;
+        material.shader = shader;
+        if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
+        if (material.HasProperty("_Color")) material.SetColor("_Color", color);
+        if (albedo != null)
+        {
+            if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", albedo);
+            if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", albedo);
+        }
+        if (normal != null && material.HasProperty("_BumpMap"))
         {
             material.SetTexture("_BumpMap", normal);
             material.EnableKeyword("_NORMALMAP");
         }
-        if (metallic != null)
+        if (metallic != null && material.HasProperty("_MetallicGlossMap"))
         {
             material.SetTexture("_MetallicGlossMap", metallic);
-            material.EnableKeyword("_METALLICGLOSSMAP");
+            material.EnableKeyword("_METALLICSPECGLOSSMAP");
         }
-        EditorUtility.SetDirty(material);
-        return material;
+    }
+
+    private static Texture FirstTexture(Material material, params string[] properties)
+    {
+        foreach (string property in properties)
+            if (material.HasProperty(property) && material.GetTexture(property) != null)
+                return material.GetTexture(property);
+        return null;
     }
 
     private static void AssignCharacterMaterial(GameObject instance, Material material)
@@ -302,9 +374,10 @@ public static class CharacterPrototypeImporter
         string folder = Path.GetDirectoryName(modelPath)?.Replace('\\', '/');
         if (string.IsNullOrEmpty(folder)) return;
 
-        foreach (string guid in AssetDatabase.FindAssets("t:Texture2D", new[] { folder }))
+        string[] dependencies = AssetDatabase.GetDependencies(modelPath, true);
+        foreach (string path in dependencies.Where(path =>
+                     AssetDatabase.GetMainAssetTypeAtPath(path) == typeof(Texture2D)))
         {
-            string path = AssetDatabase.GUIDToAssetPath(guid);
             TextureImporter importer = AssetImporter.GetAtPath(path) as TextureImporter;
             if (importer == null) continue;
 

@@ -15,8 +15,10 @@ MonoBehaviour:
   characterName: Heliandra
   prefabPath: Characters/Heliandra
   portraitPath: UI/Portraits/HeliandraCutout
-  animatorControllerPath: ''
+  animatorControllerPath: Characters/Heliandra
   sortOrder: 0
-  tint: {r: 0.78, g: 0.35, b: 0.20, a: 1}
+  tint: {r: 0.78, g: 0.35, b: 0.2, a: 1}
   previewScale: 1
   previewYaw: 180
+  basicAbility: {fileID: 11400000, guid: 4a13979f070c1894da1cb124b722d4c7, type: 2}
+  ultimateAbility: {fileID: 11400000, guid: a26c05d9435931442b813460e9d8cc1f, type: 2}

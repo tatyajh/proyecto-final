@@ -84,7 +84,7 @@ public sealed class CombatTrainingBootstrap : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKeyDown(KeyCode.R)) ResetTargets();
+        if (Input.GetKeyDown(KeyCode.T)) ResetTargets();
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         if (!enableDeveloperCharacterSwitch) return;
@@ -129,7 +129,7 @@ public sealed class CombatTrainingBootstrap : MonoBehaviour
 
         // Los objetivos deben quedar fuera de la línea de visión inicial. Se
         // colocan al otro lado del personaje respecto de la cámara y abiertos
-        // en abanico, pero conservando radios válidos para Q (5) y E (8).
+        // en abanico, pero conservando radios válidos para Q y R.
         Camera view = Camera.main;
         Vector3 awayFromCamera = view != null
             ? Vector3.ProjectOnPlane(player.transform.position - view.transform.position, Vector3.up).normalized

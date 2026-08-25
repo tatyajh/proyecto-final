@@ -1,4 +1,5 @@
 using UnityEngine;
+using Gameplay.Combat;
 
 /// <summary>
 /// Ficha de un personaje jugable (spec 05 del paquete de menú): nombre, ruta
@@ -35,4 +36,10 @@ public sealed class CharacterDefinition : ScriptableObject
     [Header("Presentación en el carrusel")]
     [Min(0.1f)] public float previewScale = 1f;
     public float previewYaw = 180f;
+
+    [Header("Habilidades")]
+    [Tooltip("Ataque básico configurable. Si queda vacío se usa la ficha oficial del catálogo.")]
+    public AbilityDefinition basicAbility;
+    [Tooltip("Definitiva configurable. Si queda vacía se usa la ficha oficial del catálogo.")]
+    public AbilityDefinition ultimateAbility;
 }
