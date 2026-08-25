@@ -217,6 +217,7 @@ public sealed class EtherealButton : MonoBehaviour,
     public void OnPointerClick(PointerEventData eventData)
     {
         if (!interactable) return;
+        AudioCatalog.PlayUiClick();
         OnActivated?.Invoke();
     }
 
