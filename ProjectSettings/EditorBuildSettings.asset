@@ -29,5 +29,8 @@ EditorBuildSettings:
   - enabled: 0
     path: Assets/Scenes/Testing/Movement.unity
     guid: e1b03cc06c36d22488972f8dfb702f8d
+  - enabled: 1
+    path: Assets/Scenes/Testing/Character tests.unity
+    guid: 25c9f7a0ebe0945138a3436a4f3b1c8e
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0
