@@ -100,6 +100,13 @@ public class PlayerController : NetworkBehaviour
     public bool ExitConfirmationVisible => exitConfirmationVisible;
     public string NetworkStatusText => Object != null ? OnlineMatchState.Message : string.Empty;
     public bool IsOnlinePlayer => Object != null;
+    /// <summary>
+    /// Los avatares jugables son objetos creados por PlayerSpawner. El Player
+    /// serializado en OnlineArena es una referencia de escena del equipo y se
+    /// conserva intacto, pero no debe ocupar un cupo ni recibir input.
+    /// </summary>
+    public bool IsNetworkMatchParticipant => Object != null &&
+        !Object.NetworkTypeId.IsSceneObject && Object.InputAuthority.IsValid;
     public string TeamStatusText => Object == null
         ? string.Empty
         : $"{MatchContext.Mode.DisplayName} · {GameLocalization.Choose("Equipo", "Team")} {MatchTeams.NameOf(Team)}";
@@ -138,6 +145,12 @@ public class PlayerController : NetworkBehaviour
         // garantiza que WASD llegue al jugador después de enfocar el canvas.
         WebGLInput.captureAllKeyboardInput = true;
 #endif
+
+        if (Object != null && Object.NetworkTypeId.IsSceneObject)
+        {
+            DisableSceneReferencePlayer();
+            return;
+        }
 
         if (Object == null && PlayModeContext.Current == PlayMode.Multiplayer)
         {
@@ -183,6 +196,12 @@ public class PlayerController : NetworkBehaviour
 
     public override void Spawned()
     {
+        if (Object.NetworkTypeId.IsSceneObject)
+        {
+            DisableSceneReferencePlayer();
+            return;
+        }
+
         if (HasStateAuthority)
         {
             NetworkHealth = MaxHealth;
@@ -218,6 +237,12 @@ public class PlayerController : NetworkBehaviour
     private void ConfigureNetworkAuthorityComponents()
     {
         if (Object == null) return;
+
+        if (!IsNetworkMatchParticipant)
+        {
+            DisableSceneReferencePlayer();
+            return;
+        }
 
         if (agent == null) agent = GetComponent<NavMeshAgent>();
         if (agent != null)
@@ -404,8 +429,24 @@ public class PlayerController : NetworkBehaviour
 
     public override void Render()
     {
+        if (Object != null && Object.NetworkTypeId.IsSceneObject) return;
         EnsurePrototypeCharacterVisual();
         UpdateCharacterAnimation(Object == null ? agent != null && agent.velocity.sqrMagnitude > 0.04f : NetworkMoving);
+    }
+
+    private void DisableSceneReferencePlayer()
+    {
+        controlsEnabled = false;
+        if (agent == null) agent = GetComponent<NavMeshAgent>();
+        if (agent != null) agent.enabled = false;
+        if (combatController == null) combatController = GetComponent<PlayerCombatController>();
+        if (combatController != null) combatController.enabled = false;
+        if (joystick != null) joystick.gameObject.SetActive(false);
+
+        foreach (Renderer renderer in GetComponentsInChildren<Renderer>(true))
+            renderer.enabled = false;
+        foreach (Collider playerCollider in GetComponentsInChildren<Collider>(true))
+            playerCollider.enabled = false;
     }
 
     private void SimulateDirectMovement(Vector2 inputDir, bool isAiming, float deltaTime)
@@ -512,7 +553,7 @@ public class PlayerController : NetworkBehaviour
 
         foreach (PlayerController target in players)
         {
-            if (target == null || target.IsDefeated) continue;
+            if (!IsMatchParticipant(target) || target.IsDefeated) continue;
             if (IsAllyOf(target))
             {
                 if (ability.alliedEffect != CombatEffectKind.None)
@@ -796,7 +837,7 @@ public class PlayerController : NetworkBehaviour
 
         foreach (PlayerController player in FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
         {
-            if (player.Object == null || !player.CombatReady) continue;
+            if (!IsMatchParticipant(player) || !player.CombatReady) continue;
 
             if (IsAllyOf(player))
             {
@@ -890,6 +931,7 @@ public class PlayerController : NetworkBehaviour
         prototypeAnimator = EnsureCharacterAnimator(instance, characterIndex);
         prototypeVisual = instance.transform;
         FitImportedCharacterToCollider(instance);
+        instance.transform.localPosition += CharacterCatalog.ModelLocalOffsetOf(characterIndex);
         return true;
     }
 
@@ -940,30 +982,14 @@ public class PlayerController : NetworkBehaviour
 
     private void FitImportedCharacterToCollider(GameObject character)
     {
-        Renderer[] renderers = character.GetComponentsInChildren<Renderer>(true);
-        if (renderers.Length == 0) return;
+        if (character == null) return;
+        character.transform.localPosition = Vector3.zero;
+        character.transform.localRotation = Quaternion.identity;
+    }
 
-        Bounds bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++)
-            bounds.Encapsulate(renderers[i].bounds);
-
-        if (bounds.size.y <= 0.001f) return;
-
-        float scale = DesiredCharacterHeight / bounds.size.y;
-        character.transform.localScale *= scale;
-
-        bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++)
-            bounds.Encapsulate(renderers[i].bounds);
-
-        // Antes se asumía un collider fijo de 2 unidades (mitad = 1); ahora se
-        // lee el CapsuleCollider real para que el modelo apoye los pies justo
-        // en su base sin importar qué tan grande sea el collider del jugador.
-        CapsuleCollider capsule = GetComponent<CapsuleCollider>();
-        float halfHeight = capsule != null ? capsule.height * 0.5f * transform.lossyScale.y : 1f;
-        float centerOffset = capsule != null ? capsule.center.y * transform.lossyScale.y : 0f;
-        float colliderBottom = transform.position.y + centerOffset - halfHeight;
-        character.transform.position += Vector3.up * (colliderBottom - bounds.min.y);
+    private static bool IsMatchParticipant(PlayerController player)
+    {
+        return player != null && player.IsNetworkMatchParticipant && player.MatchReady;
     }
 
     private void CreateVisualPart(string partName, PrimitiveType primitiveType, Vector3 position, Vector3 scale, Color color)
@@ -1005,7 +1031,7 @@ public class PlayerController : NetworkBehaviour
 
     private bool CanControlPlayer()
     {
-        return Object == null || HasStateAuthority;
+        return Object == null || (IsNetworkMatchParticipant && HasStateAuthority);
     }
 
     private AbilityDefinition GetAbility(AbilitySlot slot)

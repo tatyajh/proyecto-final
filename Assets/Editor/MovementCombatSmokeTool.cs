@@ -112,6 +112,20 @@ public static class MovementCombatSmokeTool
         if (animator == null || animator.runtimeAnimatorController == null)
             failures.Add($"{name} no tiene Animator Controller en Movement.");
 
+        if (name == "Acatheria")
+        {
+            Renderer[] visible = Array.FindAll(renderers,
+                renderer => renderer.enabled && renderer.gameObject.activeInHierarchy);
+            if (visible.Length > 0)
+            {
+                Bounds bounds = visible[0].bounds;
+                for (int i = 1; i < visible.Length; i++) bounds.Encapsulate(visible[i].bounds);
+                float groundError = Mathf.Abs(bounds.min.y - player.transform.position.y);
+                if (groundError > 0.15f)
+                    failures.Add($"Acatheria conserva un desfase vertical de {groundError:0.000} unidades.");
+            }
+        }
+
         AimData aim = new AimData { Direction = player.transform.forward, DistanceRatio = 1f, IsTap = true };
         if (!player.TryCastAbility(AbilitySlot.Basic, aim)) failures.Add($"{name}: básica no se pudo lanzar.");
         if (!player.TryCastAbility(AbilitySlot.Ultimate, aim)) failures.Add($"{name}: definitiva no se pudo lanzar.");

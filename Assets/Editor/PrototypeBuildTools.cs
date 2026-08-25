@@ -15,7 +15,6 @@ using UnityEngine.AI;
 public static class PrototypeBuildTools
 {
     private const string FirstScene = "Assets/Scenes/Menus/Blighted Intro.unity";
-    private const string ArenaScene = "Assets/Scenes/Multiplayer/OnlineArena.unity";
     private const string BuildFolderName = "ProyectoFinal-WebGL";
     private const string ZipName = "ProyectoFinal-WebGL-ITCH.zip";
 
@@ -100,31 +99,6 @@ public static class PrototypeBuildTools
         Debug.Log($"[Build] Cliente de smoke multijugador: {executable}");
     }
 
-    /// <summary>
-    /// Retira el jugador de maqueta que quedó serializado en OnlineArena. Los
-    /// jugadores de una partida siempre deben provenir del PlayerSpawner; de
-    /// lo contrario cada cliente suma un controlador local no replicado y el
-    /// conteo/evaluación de daño deja de ser determinista.
-    /// </summary>
-    public static void RemoveLegacyArenaPlayer()
-    {
-        Scene scene = EditorSceneManager.OpenScene(ArenaScene, OpenSceneMode.Single);
-        PlayerController[] controllers = UnityEngine.Object.FindObjectsByType<PlayerController>(
-            FindObjectsInactive.Include, FindObjectsSortMode.None);
-        foreach (PlayerController controller in controllers)
-        {
-            if (controller.GetComponent<NetworkObject>() == null) continue;
-            UnityEngine.Object.DestroyImmediate(controller.gameObject);
-        }
-
-        MobaCamera camera = UnityEngine.Object.FindFirstObjectByType<MobaCamera>();
-        if (camera != null) camera.SetTarget(null);
-        EditorSceneManager.MarkSceneDirty(scene);
-        EditorSceneManager.SaveScene(scene);
-        AssetDatabase.SaveAssets();
-        Debug.Log($"[Multiplayer] OnlineArena limpia: {controllers.Length} jugador(es) de maqueta retirado(s).");
-    }
-
     private static List<string> ValidateProject()
     {
         List<string> errors = new List<string>();
@@ -158,12 +132,6 @@ public static class PrototypeBuildTools
                 Scene scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
                 foreach (GameObject root in scene.GetRootGameObjects())
                     CountMissingScripts(root, scenePath, errors);
-                if (scenePath == ArenaScene)
-                {
-                    foreach (GameObject root in scene.GetRootGameObjects())
-                        if (root.GetComponentInChildren<PlayerController>(true) != null)
-                            errors.Add("OnlineArena contiene un PlayerController serializado; solo PlayerSpawner puede crear jugadores.");
-                }
             }
         }
         finally

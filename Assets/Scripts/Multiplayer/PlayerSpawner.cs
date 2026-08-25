@@ -244,7 +244,7 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
     {
         _playerBuffer.Clear();
         foreach (PlayerController player in FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
-            if (player.Object != null && player.Object.InputAuthority.IsValid)
+            if (player.IsNetworkMatchParticipant)
                 _playerBuffer.Add(player);
     }
 
@@ -312,7 +312,7 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
     private static bool AnyAvatarStarted()
     {
         foreach (PlayerController player in FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
-            if (player.Object != null && player.MatchReady) return true;
+            if (player.IsNetworkMatchParticipant && player.MatchReady) return true;
         return false;
     }
 

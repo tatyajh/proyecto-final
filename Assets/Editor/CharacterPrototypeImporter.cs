@@ -105,11 +105,46 @@ public static class CharacterPrototypeImporter
             if (BuildPrefab(source)) built++;
         }
 
+        CalibrateAcatheriaPivot();
+
         if (built > 0)
         {
             AssetDatabase.SaveAssets();
             Debug.Log($"[CharacterPrototypeImporter] {built} personaje(s) actualizados en {OutputFolder}.");
         }
+    }
+
+    /// <summary>
+    /// Acatheria fue exportada con el pivote separado de las patas. Se mide el
+    /// prefab original (sin tocar su escala ni su FBX) y la compensación queda
+    /// en su ficha; PlayerController la suma después del posicionamiento común
+    /// que llegó desde Develop.
+    /// </summary>
+    private static void CalibrateAcatheriaPivot()
+    {
+        const string prefabPath = OutputFolder + "/Acatheria.prefab";
+        const string definitionPath = OutputFolder + "/Definitions/Acatheria.asset";
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+        CharacterDefinition definition = AssetDatabase.LoadAssetAtPath<CharacterDefinition>(definitionPath);
+        if (prefab == null || definition == null) return;
+
+        GameObject instance = Object.Instantiate(prefab, Vector3.zero, Quaternion.identity);
+        Renderer[] renderers = instance.GetComponentsInChildren<Renderer>(true);
+        if (renderers.Length == 0)
+        {
+            Object.DestroyImmediate(instance);
+            return;
+        }
+
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++) bounds.Encapsulate(renderers[i].bounds);
+        Vector3 measuredOffset = new Vector3(0f, -bounds.min.y, 0f);
+        Object.DestroyImmediate(instance);
+
+        if ((definition.modelLocalOffset - measuredOffset).sqrMagnitude <= 0.000001f) return;
+        definition.modelLocalOffset = measuredOffset;
+        EditorUtility.SetDirty(definition);
+        Debug.Log($"[CharacterPrototypeImporter] Pivote de Acatheria compensado {measuredOffset}.");
     }
 
     private static void ConfigurePortraitImporters()

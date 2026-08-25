@@ -34,6 +34,7 @@ public sealed class MultiplayerSmokeRuntime : MonoBehaviour
     private bool networkSimulationEnabled;
     private bool useTransportSimulation;
     private bool suppressCombat;
+    private bool sawExpectedPlayerCount;
     private OnlineMatchPhase lastPhase = (OnlineMatchPhase)(-1);
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -79,7 +80,8 @@ public sealed class MultiplayerSmokeRuntime : MonoBehaviour
 
         NetworkLauncher launcher = gameObject.AddComponent<NetworkLauncher>();
         connectDeadline = Time.realtimeSinceStartup + 40f;
-        bool connected = await launcher.StartGame(GameMode.Shared, mode, arenaIndex);
+        bool connected = await launcher.StartGame(
+            GameMode.Shared, mode, arenaIndex, Argument("-bb-session"));
         if (!connected) Finish(2, $"Photon no conectó: {NetworkLauncher.LastFailureReason}");
     }
 
@@ -95,13 +97,14 @@ public sealed class MultiplayerSmokeRuntime : MonoBehaviour
         if (localPlayer == null)
         {
             foreach (PlayerController candidate in FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
-                if (candidate.IsOnlinePlayer && candidate.HasLocalControl) localPlayer = candidate;
+                if (candidate.IsNetworkMatchParticipant && candidate.HasLocalControl) localPlayer = candidate;
             return;
         }
 
         PlayerController[] players = Array.FindAll(
             FindObjectsByType<PlayerController>(FindObjectsSortMode.None),
-            player => player.IsOnlinePlayer && player.Object != null && player.Object.InputAuthority.IsValid);
+            player => player.IsNetworkMatchParticipant);
+        sawExpectedPlayerCount |= players.Length == expectedPlayers;
         TrackRemoteReplication(players);
         if (OnlineMatchState.Phase != lastPhase)
         {
@@ -145,11 +148,16 @@ public sealed class MultiplayerSmokeRuntime : MonoBehaviour
         }
         else if (elapsed >= duration)
         {
-            bool success = players.Length == expectedPlayers &&
+            // Los procesos terminan prácticamente en el mismo frame. Un
+            // compañero puede desconectarse milisegundos antes de evaluar este
+            // cliente, así que se valida el cupo exacto observado durante la
+            // sesión y no solo la fotografía del frame de cierre.
+            bool success = sawExpectedPlayerCount &&
                            movingRemotePlayers.Count >= expectedPlayers - 1 && sawRemoteCharacter &&
                            (Invulnerable || suppressCombat || sawRemoteHealthChange);
             Finish(success ? 0 : 2,
-                $"Soak {elapsed:0}s; jugadores {players.Length}/{expectedPlayers}; remotos moviéndose " +
+                $"Soak {elapsed:0}s; cupo exacto observado={sawExpectedPlayerCount}; jugadores al cierre " +
+                $"{players.Length}/{expectedPlayers}; remotos moviéndose " +
                 $"{movingRemotePlayers.Count}/{expectedPlayers - 1}; vida remota cambió={sawRemoteHealthChange}.");
         }
     }
@@ -158,7 +166,7 @@ public sealed class MultiplayerSmokeRuntime : MonoBehaviour
     {
         foreach (PlayerController player in players)
         {
-            if (!player.IsOnlinePlayer || player.HasLocalControl || player.Object == null) continue;
+            if (!player.IsNetworkMatchParticipant || player.HasLocalControl || player.Object == null) continue;
             int id = player.Object.InputAuthority.PlayerId;
             sawRemoteCharacter |= !string.IsNullOrWhiteSpace(player.PlayerDisplayName);
             if (!initialRemotePositions.TryGetValue(id, out Vector3 initial))

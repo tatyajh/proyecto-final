@@ -27,11 +27,13 @@ public static class CharacterCatalog
         public readonly Color Tint;
         public readonly float PreviewScale;
         public readonly float PreviewYaw;
+        public readonly Vector3 ModelLocalOffset;
         public readonly AbilityDefinition BasicAbility;
         public readonly AbilityDefinition UltimateAbility;
 
         public Entry(string name, string prefabPath, string portraitPath, string animatorControllerPath,
             Color tint, float previewScale = 1f, float previewYaw = 180f,
+            Vector3 modelLocalOffset = default,
             AbilityDefinition basicAbility = null, AbilityDefinition ultimateAbility = null)
         {
             Name = name;
@@ -41,6 +43,7 @@ public static class CharacterCatalog
             Tint = tint;
             PreviewScale = previewScale;
             PreviewYaw = previewYaw;
+            ModelLocalOffset = modelLocalOffset;
             BasicAbility = basicAbility;
             UltimateAbility = ultimateAbility;
         }
@@ -72,6 +75,7 @@ public static class CharacterCatalog
                     definition.tint,
                     definition.previewScale,
                     definition.previewYaw,
+                    definition.modelLocalOffset,
                     definition.basicAbility,
                     definition.ultimateAbility))
                 .ToArray();
@@ -109,6 +113,8 @@ public static class CharacterCatalog
     public static float PreviewScaleOf(int index) => Entries[Clamp(index)].PreviewScale;
 
     public static float PreviewYawOf(int index) => Entries[Clamp(index)].PreviewYaw;
+
+    public static Vector3 ModelLocalOffsetOf(int index) => Entries[Clamp(index)].ModelLocalOffset;
 
     /// <summary>Prefab del personaje, o null si arte todavía no lo entregó.</summary>
     public static GameObject LoadModel(int index) => Resources.Load<GameObject>(PathOf(index));

@@ -37,6 +37,10 @@ public sealed class CharacterDefinition : ScriptableObject
     [Min(0.1f)] public float previewScale = 1f;
     public float previewYaw = 180f;
 
+    [Header("Ajuste del modelo jugable")]
+    [Tooltip("Compensa pivotes exportados fuera de los pies sin alterar el spawn, la cámara ni los demás personajes.")]
+    public Vector3 modelLocalOffset;
+
     [Header("Habilidades")]
     [Tooltip("Ataque básico configurable. Si queda vacío se usa la ficha oficial del catálogo.")]
     public AbilityDefinition basicAbility;
