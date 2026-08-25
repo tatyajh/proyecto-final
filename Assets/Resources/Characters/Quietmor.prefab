@@ -1085,7 +1085,7 @@ GameObject:
   - component: {fileID: 5102955844788418281}
   - component: {fileID: 7265715245825326535}
   m_Layer: 0
-  m_Name: CampanaPrototype
+  m_Name: Quietmor
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

@@ -40,8 +40,6 @@ public static class CharacterPrototypeImporter
         public string PrefabPath => $"{OutputFolder}/{CatalogName}.prefab";
     }
 
-    // Quietmor conserva el nombre CampanaPrototype porque ya hay escenas y un
-    // Animator Controller apuntando a él; renombrarlo rompería esas referencias.
     private static readonly CharacterSource[] Sources =
     {
         new CharacterSource(
@@ -55,10 +53,10 @@ public static class CharacterPrototypeImporter
             string.Empty,
             OutputFolder + "/Lunara.controller"),
         new CharacterSource(
-            "CampanaPrototype",
-            "Assets/Models 3D/Character animation/Newest/Quietmor/Campana sin voz rig.fbx",
-            "Assets/Models 3D/Character animation/Newest/Quietmor/Campana sin voz_mat.mat",
-            OutputFolder + "/CampanaPrototype.controller"),
+            "Quietmor",
+            "Assets/Models 3D/Character animation/Newest/Quietmor/Quietmor rig.fbx",
+            "Assets/Models 3D/Character animation/Newest/Quietmor/Quietmor_mat.mat",
+            OutputFolder + "/Quietmor.controller"),
         new CharacterSource(
             "Solmara",
             "Assets/Models 3D/Character animation/Newest/Solmara/reina girasol.fbx",

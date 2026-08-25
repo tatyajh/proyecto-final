@@ -754,7 +754,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: ad3387cf65a604555a4bb845a468ea4a, type: 3}
       propertyPath: m_Name
-      value: Campana sin voz rig
+      value: Quietmor rig
       objectReference: {fileID: 0}
     - target: {fileID: 951732771261306611, guid: ad3387cf65a604555a4bb845a468ea4a, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x

@@ -86,14 +86,12 @@ public static class CharacterCatalog
         return Fallback;
     }
 
-    // Quietmor conserva "CampanaPrototype" porque así se llama el prefab que
-    // genera CharacterPrototypeImporter; renombrarlo rompería referencias.
     private static readonly Entry[] Fallback =
     {
         new Entry("Heliandra", "Characters/Heliandra", "UI/Portraits/HeliandraCutout", string.Empty, new Color(0.78f, 0.35f, 0.20f)),
         new Entry("Lunara", "Characters/Lunara", "UI/Portraits/LunaraCutout", string.Empty, new Color(0.34f, 0.48f, 0.76f)),
         new Entry("Solmara", "Characters/Solmara", string.Empty, "Characters/Solmara", new Color(0.83f, 0.66f, 0.20f)),
-        new Entry("Quietmor", "Characters/CampanaPrototype", string.Empty, "Characters/CampanaPrototype", new Color(0.34f, 0.25f, 0.48f)),
+        new Entry("Quietmor", "Characters/Quietmor", string.Empty, "Characters/Quietmor", new Color(0.34f, 0.25f, 0.48f)),
         new Entry("Acatheria", "Characters/Acatheria", string.Empty, "Characters/Acatheria", new Color(0.30f, 0.64f, 0.45f)),
         new Entry("Terramor", "Characters/Terramor", "UI/Portraits/TerramorCutout", string.Empty, new Color(0.43f, 0.30f, 0.20f))
     };
