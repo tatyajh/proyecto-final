@@ -140,12 +140,6 @@ public class PlayerController : NetworkBehaviour
 
     private void Start()
     {
-#if UNITY_WEBGL && !UNITY_EDITOR
-        // itch.io ejecuta el juego dentro de un iframe. Capturar el teclado
-        // garantiza que WASD llegue al jugador después de enfocar el canvas.
-        WebGLInput.captureAllKeyboardInput = true;
-#endif
-
         if (Object != null && Object.NetworkTypeId.IsSceneObject)
         {
             DisableSceneReferencePlayer();
@@ -185,13 +179,6 @@ public class PlayerController : NetworkBehaviour
             CombatHudController.EnsureFor(this);
 
         ConfigureNetworkAuthorityComponents();
-    }
-
-    private void OnApplicationFocus(bool hasFocus)
-    {
-#if UNITY_WEBGL && !UNITY_EDITOR
-        if (hasFocus) WebGLInput.captureAllKeyboardInput = true;
-#endif
     }
 
     public override void Spawned()
