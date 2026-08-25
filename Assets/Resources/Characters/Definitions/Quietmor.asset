@@ -20,3 +20,5 @@ MonoBehaviour:
   tint: {r: 0.34, g: 0.25, b: 0.48, a: 1}
   previewScale: 2.7
   previewYaw: 180
+  basicAbility: {fileID: 11400000, guid: 103e4576513d9384e84f0cd72bc4309d, type: 2}
+  ultimateAbility: {fileID: 11400000, guid: 6bae4e612ed37ea408e69324cf559cd2, type: 2}

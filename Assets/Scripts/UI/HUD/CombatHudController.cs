@@ -29,6 +29,7 @@ public sealed class CombatHudController : MonoBehaviour
     private TMP_Text resultLabel;
     private GameObject trainingPanel;
     private TMP_Text trainingLabel;
+    private GameObject blindOverlay;
     private AbilityOverlay basicOverlay;
     private AbilityOverlay ultimateOverlay;
 
@@ -113,6 +114,12 @@ public sealed class CombatHudController : MonoBehaviour
         BuildResult(root);
         BuildTrainingControls(root);
         BindAbilityOverlays();
+        Image blind = CreateImage(root, "Blind effect", new Color(0.015f, 0.008f, 0.02f, 0.78f));
+        Stretch(blind.rectTransform);
+        blind.raycastTarget = false;
+        blindOverlay = blind.gameObject;
+        blindOverlay.transform.SetAsFirstSibling();
+        blindOverlay.SetActive(false);
         hudRoot.AddComponent<MobileSafeArea>();
     }
 
@@ -169,7 +176,7 @@ public sealed class CombatHudController : MonoBehaviour
             new Vector2(450f, 136f), TextAnchor.UpperRight, Panel);
         trainingPanel = panel.gameObject;
         trainingLabel = CreateText(panel, "Training hint",
-            GameLocalization.Choose("ENTRENAMIENTO · R reinicia objetivos", "TRAINING · R resets targets"),
+            GameLocalization.Choose("ENTRENAMIENTO · T reinicia objetivos", "TRAINING · T resets targets"),
             26, Ivory, FontStyles.Bold);
         Anchor(trainingLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -14f), new Vector2(420f, 42f));
 
@@ -179,8 +186,8 @@ public sealed class CombatHudController : MonoBehaviour
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         trainingLabel.text = GameLocalization.Choose(
-            "ENTRENAMIENTO · 1–6 personaje · R objetivos",
-            "TRAINING · 1–6 character · R targets");
+            "ENTRENAMIENTO · 1–6 personaje · T objetivos",
+            "TRAINING · 1–6 character · T targets");
 #endif
     }
 
@@ -190,7 +197,7 @@ public sealed class CombatHudController : MonoBehaviour
         {
             bool ultimate = joystick.name.ToLowerInvariant().Contains("ultimate");
             AbilityOverlay overlay = CreateAbilityOverlay(joystick.transform as RectTransform,
-                ultimate ? "E" : "Q", ultimate ? 8f : 1f);
+                ultimate ? "R" : "Q", ultimate ? 8f : 1f);
             if (ultimate) ultimateOverlay = overlay;
             else basicOverlay = overlay;
         }
@@ -215,7 +222,7 @@ public sealed class CombatHudController : MonoBehaviour
         fill.fillClockwise = false;
         fill.raycastTarget = false;
 
-        TMP_Text label = CreateText(rect, "Key", key, 40, Ivory, FontStyles.Bold);
+        TMP_Text label = CreateText(rect, "Ability", key, 26, Ivory, FontStyles.Bold);
         Stretch(label.rectTransform);
         label.raycastTarget = false;
 
@@ -236,13 +243,16 @@ public sealed class CombatHudController : MonoBehaviour
         healthFill.rectTransform.anchorMax = new Vector2(health, 1f);
         healthFill.color = health > 0.35f ? new Color(0.27f, 0.72f, 0.39f) : new Color(0.78f, 0.22f, 0.22f);
 
-        teamLabel.text = player.TeamStatusText;
+        string combatStatus = player.CombatStatusText;
+        teamLabel.text = string.IsNullOrWhiteSpace(combatStatus)
+            ? player.TeamStatusText
+            : $"{player.TeamStatusText} · {combatStatus}";
         teamLabel.color = player.TeamDisplayColor;
         statusLabel.text = player.NetworkStatusText;
         statusLabel.gameObject.SetActive(!string.IsNullOrWhiteSpace(statusLabel.text));
 
-        UpdateAbility(basicOverlay, player.BasicCooldownRemaining);
-        UpdateAbility(ultimateOverlay, player.UltimateCooldownRemaining);
+        UpdateAbility(basicOverlay, player.BasicCooldownRemaining, player.BasicCooldownDuration, player.BasicAbilityName);
+        UpdateAbility(ultimateOverlay, player.UltimateCooldownRemaining, player.UltimateCooldownDuration, player.UltimateAbilityName);
 
         confirmationWarning.text = player.ExitWarningText;
         confirmationPanel.SetActive(player.ExitConfirmationVisible);
@@ -250,13 +260,17 @@ public sealed class CombatHudController : MonoBehaviour
         string result = player.MatchResultText;
         resultPanel.SetActive(!string.IsNullOrEmpty(result));
         resultLabel.text = result;
+        blindOverlay.SetActive(player.IsBlinded);
     }
 
-    private static void UpdateAbility(AbilityOverlay overlay, float remaining)
+    private static void UpdateAbility(AbilityOverlay overlay, float remaining, float duration, string abilityName)
     {
         if (overlay == null) return;
+        overlay.Duration = Mathf.Max(0.05f, duration);
         overlay.Fill.fillAmount = Mathf.Clamp01(remaining / overlay.Duration);
-        overlay.Label.text = remaining > 0f ? $"{overlay.Key}\n{remaining:0.0}" : overlay.Key;
+        overlay.Label.text = remaining > 0f
+            ? $"{abilityName}\n[{overlay.Key}] {remaining:0.0}"
+            : $"{abilityName}\n[{overlay.Key}]";
     }
 
     private void OnDestroy()

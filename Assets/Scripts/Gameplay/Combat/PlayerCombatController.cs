@@ -13,10 +13,6 @@ namespace Gameplay.Combat
         [SerializeField] private SkillAimIndicator basicAimIndicator;
         [SerializeField] private SkillAimIndicator ultimateAimIndicator;
 
-        [Header("Attack Settings")]
-        [SerializeField] private float attackRange = 5f;
-        [SerializeField] private float ultimateRange = 8f;
-
         // 🎯 Flag para saber si el jugador está apuntando
         public bool IsAiming { get; private set; }
         private PlayerController player;
@@ -170,7 +166,7 @@ namespace Gameplay.Combat
 
             if (basicAimIndicator != null)
             {
-                basicAimIndicator.ShowIndicators(attackRange);
+                basicAimIndicator.ShowIndicators(player != null ? player.BasicAbilityRange : 5f);
                 basicAimIndicator.UpdateAim(aimData.Direction);
             }
 
@@ -187,13 +183,10 @@ namespace Gameplay.Combat
             Vector3 finalDirection = aimData.IsTap ? transform.forward : aimData.Direction;
             RotatePlayerTowards(finalDirection);
 
-            ExecuteAttack(finalDirection);
+            aimData.Direction = finalDirection;
+            player?.TryCastAbility(AbilitySlot.Basic, aimData);
         }
 
-        private void ExecuteAttack(Vector3 direction)
-        {
-            player?.TryExecuteAttack(direction, false);
-        }
         #endregion
 
         #region Ultimate
@@ -204,7 +197,7 @@ namespace Gameplay.Combat
 
             if (ultimateAimIndicator != null)
             {
-                ultimateAimIndicator.ShowIndicators(ultimateRange);
+                ultimateAimIndicator.ShowIndicators(player != null ? player.UltimateAbilityRange : 8f);
                 ultimateAimIndicator.UpdateAim(aimData.Direction);
             }
 
@@ -221,13 +214,10 @@ namespace Gameplay.Combat
             Vector3 finalDirection = aimData.IsTap ? transform.forward : aimData.Direction;
             RotatePlayerTowards(finalDirection);
 
-            ExecuteUltimate(finalDirection);
+            aimData.Direction = finalDirection;
+            player?.TryCastAbility(AbilitySlot.Ultimate, aimData);
         }
 
-        private void ExecuteUltimate(Vector3 direction)
-        {
-            player?.TryExecuteAttack(direction, true);
-        }
         #endregion
 
         private void RotatePlayerTowards(Vector3 direction)

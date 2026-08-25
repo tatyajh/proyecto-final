@@ -1,3 +1,5 @@
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.EventSystems;
@@ -41,6 +43,20 @@ public class PlayerController : NetworkBehaviour
     private int localHealth = MaxHealth;
     private float basicReadyAt;
     private float ultimateReadyAt;
+    private float localRootedUntil;
+    private float localSlowedUntil;
+    private float localSilencedUntil;
+    private float localHasteUntil;
+    private float localStunnedUntil;
+    private float localBlindUntil;
+    private float localRevealUntil;
+    private int localShield;
+    private Vector2 pendingMoveInput;
+    private bool pendingAimRotation;
+    private int castSequence;
+    private bool automatedInputEnabled;
+    private Vector2 automatedMoveInput;
+    private readonly HashSet<long> receivedCastTokens = new HashSet<long>();
     private Transform prototypeVisual;
     private Animator prototypeAnimator;
     private int prototypeCharacterIndex = -1;
@@ -53,16 +69,44 @@ public class PlayerController : NetworkBehaviour
     [Networked] public int TeamId { get; private set; }
     [Networked] public int TeamSlot { get; private set; }
     [Networked] public int CharacterIndex { get; private set; }
+    [Networked] public NetworkBool MatchReady { get; private set; }
+    [Networked] public NetworkBool NetworkMoving { get; private set; }
+    [Networked] private TickTimer BasicCooldownTimer { get; set; }
+    [Networked] private TickTimer UltimateCooldownTimer { get; set; }
+    [Networked] private TickTimer RootTimer { get; set; }
+    [Networked] private TickTimer SlowTimer { get; set; }
+    [Networked] private TickTimer SilenceTimer { get; set; }
+    [Networked] private TickTimer HasteTimer { get; set; }
+    [Networked] private TickTimer StunTimer { get; set; }
+    [Networked] private TickTimer BlindTimer { get; set; }
+    [Networked] private TickTimer RevealTimer { get; set; }
+    [Networked] private int NetworkShield { get; set; }
 
     public int CurrentHealth => Object == null || !CombatReady ? localHealth : NetworkHealth;
     public bool IsDefeated => (Object == null || CombatReady) && CurrentHealth <= 0;
     public bool HasLocalControl => CanControlPlayer();
     public string PlayerDisplayName => GetDisplayName();
-    public float BasicCooldownRemaining => Mathf.Max(0f, basicReadyAt - Time.unscaledTime);
-    public float UltimateCooldownRemaining => Mathf.Max(0f, ultimateReadyAt - Time.unscaledTime);
+    public float BasicCooldownRemaining => RemainingCooldown(AbilitySlot.Basic);
+    public float UltimateCooldownRemaining => RemainingCooldown(AbilitySlot.Ultimate);
+    public float BasicCooldownDuration => GetAbility(AbilitySlot.Basic).cooldown;
+    public float UltimateCooldownDuration => GetAbility(AbilitySlot.Ultimate).cooldown;
+    public string BasicAbilityName => GetAbility(AbilitySlot.Basic).DisplayName;
+    public string UltimateAbilityName => GetAbility(AbilitySlot.Ultimate).DisplayName;
+    public float BasicAbilityRange => GetAbility(AbilitySlot.Basic).range;
+    public float UltimateAbilityRange => GetAbility(AbilitySlot.Ultimate).range;
+    public int CurrentShield => Object == null ? localShield : NetworkShield;
+    public string CombatStatusText => BuildCombatStatusText();
+    public bool IsBlinded => Object == null ? Time.unscaledTime < localBlindUntil : TimerActive(BlindTimer);
     public bool ExitConfirmationVisible => exitConfirmationVisible;
     public string NetworkStatusText => Object != null ? OnlineMatchState.Message : string.Empty;
     public bool IsOnlinePlayer => Object != null;
+    /// <summary>
+    /// Los avatares jugables son objetos creados por PlayerSpawner. El Player
+    /// serializado en OnlineArena es una referencia de escena del equipo y se
+    /// conserva intacto, pero no debe ocupar un cupo ni recibir input.
+    /// </summary>
+    public bool IsNetworkMatchParticipant => Object != null &&
+        !Object.NetworkTypeId.IsSceneObject && Object.InputAuthority.IsValid;
     public string TeamStatusText => Object == null
         ? string.Empty
         : $"{MatchContext.Mode.DisplayName} · {GameLocalization.Choose("Equipo", "Team")} {MatchTeams.NameOf(Team)}";
@@ -84,7 +128,7 @@ public class PlayerController : NetworkBehaviour
     /// Sala aún incompleta. Se puede mover y lanzar ataques para ver los
     /// efectos, pero ningún golpe hace daño hasta que la partida arranca.
     /// </summary>
-    private bool IsWarmingUp => Object != null && OnlineMatchState.Phase == OnlineMatchPhase.WaitingForOpponent;
+    private bool IsWarmingUp => Object != null && !MatchReady;
 
     private enum MatchOutcome { Undecided, Victory, Defeat }
 
@@ -101,6 +145,12 @@ public class PlayerController : NetworkBehaviour
         // garantiza que WASD llegue al jugador después de enfocar el canvas.
         WebGLInput.captureAllKeyboardInput = true;
 #endif
+
+        if (Object != null && Object.NetworkTypeId.IsSceneObject)
+        {
+            DisableSceneReferencePlayer();
+            return;
+        }
 
         if (Object == null && PlayModeContext.Current == PlayMode.Multiplayer)
         {
@@ -133,6 +183,8 @@ public class PlayerController : NetworkBehaviour
 
         if (CanControlPlayer())
             CombatHudController.EnsureFor(this);
+
+        ConfigureNetworkAuthorityComponents();
     }
 
     private void OnApplicationFocus(bool hasFocus)
@@ -144,20 +196,66 @@ public class PlayerController : NetworkBehaviour
 
     public override void Spawned()
     {
+        if (Object.NetworkTypeId.IsSceneObject)
+        {
+            DisableSceneReferencePlayer();
+            return;
+        }
+
         if (HasStateAuthority)
         {
             NetworkHealth = MaxHealth;
             CombatReady = true;
-            DisplayName = PlayerPrefs.GetString("PlayerName", "Player");
+            DisplayName = MultiplayerSmokeRuntime.Active
+                ? MultiplayerSmokeRuntime.DesiredName
+                : PlayerPrefs.GetString("PlayerName", "Player");
             CharacterIndex = Mathf.Clamp(
-                PlayerPrefs.GetInt("SelectedCharacterIndex", 3), 0, CharacterNames.Length - 1);
+                MultiplayerSmokeRuntime.Active
+                    ? MultiplayerSmokeRuntime.DesiredCharacterIndex
+                    : PlayerPrefs.GetInt("SelectedCharacterIndex", 3),
+                0, CharacterNames.Length - 1);
 
             // Equipo provisional para poder aparecer en el lado correcto de la
             // arena. PlayerSpawner.BalanceTeams lo confirma al llenarse la sala.
             TeamId = MatchTeams.TeamForPlayerId(Object.InputAuthority.PlayerId);
             TeamSlot = MatchTeams.SlotForPlayerId(Object.InputAuthority.PlayerId, MatchContext.TeamSize);
+            MatchReady = false;
+            NetworkMoving = false;
+            NetworkShield = 0;
         }
         ApplyPlayerColor();
+        ConfigureNetworkAuthorityComponents();
+
+        if (CanControlPlayer())
+        {
+            MobaCamera mobaCamera = FindFirstObjectByType<MobaCamera>();
+            if (mobaCamera != null) mobaCamera.SetTarget(transform);
+            CombatHudController.EnsureFor(this);
+        }
+    }
+
+    private void ConfigureNetworkAuthorityComponents()
+    {
+        if (Object == null) return;
+
+        if (!IsNetworkMatchParticipant)
+        {
+            DisableSceneReferencePlayer();
+            return;
+        }
+
+        if (agent == null) agent = GetComponent<NavMeshAgent>();
+        if (agent != null)
+        {
+            agent.enabled = HasStateAuthority;
+            if (HasStateAuthority) agent.speed = moveSpeed;
+        }
+
+        if (!HasStateAuthority)
+        {
+            if (combatController != null) combatController.enabled = false;
+            if (joystick != null) joystick.gameObject.SetActive(false);
+        }
     }
 
     /// <summary>
@@ -171,6 +269,17 @@ public class PlayerController : NetworkBehaviour
         if (TeamId == team && TeamSlot == slot) return;
 
         RPC_AssignTeam(team, slot);
+    }
+
+    public void RequestMatchStart()
+    {
+        if (Object != null) RPC_SetMatchReady();
+    }
+
+    [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+    private void RPC_SetMatchReady()
+    {
+        MatchReady = true;
     }
 
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
@@ -204,6 +313,13 @@ public class PlayerController : NetworkBehaviour
     {
         UpdateMatchOutcome();
 
+        if (Object != null && HasStateAuthority && MatchReady && OnlineMatchState.Phase != OnlineMatchPhase.Playing &&
+            OnlineMatchState.Phase != OnlineMatchPhase.Finished)
+        {
+            OnlineMatchState.Set(OnlineMatchPhase.Playing,
+                $"{MatchContext.Mode.DisplayName} · {GameLocalization.Choose("Equipo", "Team")} {MatchTeams.NameOf(TeamId)}");
+        }
+
         if (Input.GetKeyDown(KeyCode.Escape))
         {
             // Escape ya no abandona de golpe. En WebGL se pulsa por reflejo para
@@ -224,11 +340,12 @@ public class PlayerController : NetworkBehaviour
         // Durante la espera se permite moverse y probar ataques: la arena vacía
         // se sentía congelada. Solo se bloquea si la partida aún no arrancó y
         // tampoco estamos esperando (conexión caída, resultado, etc.).
-        if (Object != null && !OnlineMatchState.CanPlay && !IsWarmingUp)
+        if (Object != null && OnlineMatchState.Phase is OnlineMatchPhase.ConnectionFailed or OnlineMatchPhase.Finished)
             return;
 
         ProcessAttackInput();
-        UpdateCharacterAnimation(agent.velocity.sqrMagnitude > 0.04f);
+        if (Object == null)
+            UpdateCharacterAnimation(agent.velocity.sqrMagnitude > 0.04f);
 
         bool isAiming = combatController != null && combatController.IsAiming;
 
@@ -239,6 +356,18 @@ public class PlayerController : NetworkBehaviour
         }
         
         Vector2 inputDir = GetInputVector();
+
+        if (IsMovementBlocked()) inputDir = Vector2.zero;
+
+        if (Object != null)
+        {
+            pendingMoveInput = inputDir;
+            pendingAimRotation = isAiming;
+
+            if (inputDir.magnitude <= 0.1f && Input.GetMouseButtonDown(0) && !IsPointerOverUI())
+                ProcessClickToMove(isAiming);
+            return;
+        }
 
         // 1. CONTROL DIRECTO (WASD / Joystick Izquierdo)
         if (inputDir.magnitude > 0.1f)
@@ -256,7 +385,7 @@ public class PlayerController : NetworkBehaviour
 
             Vector3 moveDirection = (cameraForward * inputDir.y + cameraRight * inputDir.x).normalized;
 
-            agent.Move(moveDirection * moveSpeed * Time.deltaTime);
+            agent.Move(moveDirection * moveSpeed * CurrentMovementMultiplier() * Time.deltaTime);
 
             // Solo rotar con el movimiento si NO está apuntando
             if (!isAiming && moveDirection != Vector3.zero)
@@ -286,99 +415,225 @@ public class PlayerController : NetworkBehaviour
         }
     }
 
-    public bool TryExecuteAttack(Vector3 direction, bool ultimate)
+    public override void FixedUpdateNetwork()
     {
-        if (!controlsEnabled || IsDefeated || !CanControlPlayer() || direction == Vector3.zero)
-            return false;
+        if (!HasStateAuthority || agent == null || !agent.enabled || !controlsEnabled || IsDefeated)
+            return;
+        if (OnlineMatchState.Phase is OnlineMatchPhase.ConnectionFailed or OnlineMatchPhase.Finished)
+            return;
 
-        // Mientras la sala se llena el ataque se ejecuta solo por su efecto
-        // visual; el daño se descarta más abajo. Así la espera no se ve muerta
-        // sin permitir que nadie reciba golpes antes de que empiece.
-        if (Object != null && !OnlineMatchState.CanPlay && !IsWarmingUp)
-            return false;
+        Vector2 movement = IsMovementBlocked() ? Vector2.zero : pendingMoveInput;
+        SimulateDirectMovement(movement, pendingAimRotation, Runner.DeltaTime);
+        NetworkMoving = agent.velocity.sqrMagnitude > 0.04f || movement.sqrMagnitude > 0.01f;
+    }
 
-        float now = Time.unscaledTime;
-        float readyAt = ultimate ? ultimateReadyAt : basicReadyAt;
-        if (now < readyAt)
-            return false;
+    public override void Render()
+    {
+        if (Object != null && Object.NetworkTypeId.IsSceneObject) return;
+        EnsurePrototypeCharacterVisual();
+        UpdateCharacterAnimation(Object == null ? agent != null && agent.velocity.sqrMagnitude > 0.04f : NetworkMoving);
+    }
 
-        if (ultimate) ultimateReadyAt = now + 8f;
-        else basicReadyAt = now + 1f;
+    private void DisableSceneReferencePlayer()
+    {
+        controlsEnabled = false;
+        if (agent == null) agent = GetComponent<NavMeshAgent>();
+        if (agent != null) agent.enabled = false;
+        if (combatController == null) combatController = GetComponent<PlayerCombatController>();
+        if (combatController != null) combatController.enabled = false;
+        if (joystick != null) joystick.gameObject.SetActive(false);
 
-        TriggerCharacterAnimation(ultimate ? "ultimate" : "attack");
+        foreach (Renderer renderer in GetComponentsInChildren<Renderer>(true))
+            renderer.enabled = false;
+        foreach (Collider playerCollider in GetComponentsInChildren<Collider>(true))
+            playerCollider.enabled = false;
+    }
 
-        float range = ultimate ? 8f : 5f;
-        float radius = ultimate ? 1.25f : 0.65f;
-        int damage = ultimate ? 40 : 20;
-        RaycastHit[] hits = Physics.SphereCastAll(
-            transform.position + Vector3.up,
-            radius,
-            direction.normalized,
-            range,
-            Physics.AllLayers,
-            QueryTriggerInteraction.Ignore);
-
-        PlayerController closestTarget = null;
-        DestructiblePracticeTarget closestPracticeTarget = null;
-        float closestDistance = float.MaxValue;
-        float closestObstacleDistance = range;
-        foreach (RaycastHit hit in hits)
+    private void SimulateDirectMovement(Vector2 inputDir, bool isAiming, float deltaTime)
+    {
+        if (inputDir.magnitude <= 0.1f)
         {
-            if (hit.collider.transform == transform || hit.collider.transform.IsChildOf(transform))
-                continue;
-
-            PlayerController candidate = hit.collider.GetComponentInParent<PlayerController>();
-            if (candidate == this)
-                continue;
-
-            if (candidate == null)
-            {
-                DestructiblePracticeTarget practiceTarget = hit.collider.GetComponentInParent<DestructiblePracticeTarget>();
-                if (practiceTarget != null && hit.distance < closestDistance)
-                {
-                    closestDistance = hit.distance;
-                    closestPracticeTarget = practiceTarget;
-                    closestTarget = null;
-                    continue;
-                }
-                closestObstacleDistance = Mathf.Min(closestObstacleDistance, hit.distance);
-                continue;
-            }
-
-            // Sin fuego amigo: un compañero no recibe daño ni bloquea el disparo.
-            if (IsAllyOf(candidate))
-                continue;
-
-            if (!candidate.IsDefeated && hit.distance < closestDistance)
-            {
-                closestDistance = hit.distance;
-                closestTarget = candidate;
-                closestPracticeTarget = null;
-            }
+            if (!isAiming) agent.updateRotation = true;
+            return;
         }
 
-        float feedbackRange = Mathf.Clamp(closestObstacleDistance, 0.25f, range);
+        isDirectControlActive = true;
+        agent.ResetPath();
+        agent.updateRotation = false;
+
+        Vector3 cameraForward = mainCam != null ? mainCam.transform.forward : transform.forward;
+        Vector3 cameraRight = mainCam != null ? mainCam.transform.right : transform.right;
+        cameraForward.y = 0f;
+        cameraRight.y = 0f;
+        cameraForward.Normalize();
+        cameraRight.Normalize();
+        Vector3 moveDirection = (cameraForward * inputDir.y + cameraRight * inputDir.x).normalized;
+        float speed = moveSpeed * CurrentMovementMultiplier();
+        agent.Move(moveDirection * speed * deltaTime);
+
+        if (!isAiming && moveDirection.sqrMagnitude > 0.001f)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(moveDirection);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * deltaTime);
+        }
+    }
+
+    public bool TryExecuteAttack(Vector3 direction, bool ultimate)
+    {
+        AimData aim = new AimData
+        {
+            Direction = direction,
+            DistanceRatio = 1f,
+            IsTap = true
+        };
+        return TryCastAbility(ultimate ? AbilitySlot.Ultimate : AbilitySlot.Basic, aim);
+    }
+
+    public bool TryCastAbility(AbilitySlot slot, AimData aim)
+    {
+        Vector3 direction = aim.Direction;
+        direction.y = 0f;
+        if (direction.sqrMagnitude < 0.001f) direction = transform.forward;
+        direction.Normalize();
+
+        if (!controlsEnabled || IsDefeated || !CanControlPlayer() || IsCastingBlocked())
+            return false;
+        if (Object != null && OnlineMatchState.Phase is OnlineMatchPhase.ConnectionFailed or OnlineMatchPhase.Finished)
+            return false;
+        if (RemainingCooldown(slot) > 0f)
+            return false;
+
+        AbilityDefinition ability = GetAbility(slot);
+        StartCooldown(slot, ability.cooldown);
+        castSequence = castSequence == int.MaxValue ? 1 : castSequence + 1;
+        int sourcePlayer = Object != null ? Object.InputAuthority.PlayerId : -1;
+        float ratio = aim.IsTap ? 1f : Mathf.Clamp(aim.DistanceRatio, 0.35f, 1f);
+        float travel = ability.range * ratio;
+        transform.rotation = Quaternion.LookRotation(direction);
+
         if (Object != null)
-            RPC_ShowAttackFeedback(direction.normalized, ultimate, feedbackRange);
+            RPC_PresentAbility(GetSelectedCharacterIndex(), (int)slot, direction, travel,
+                ability.radius, (int)ability.shape);
         else
-            ShowAttackFeedback(direction.normalized, ultimate, feedbackRange);
+            PresentAbility(GetSelectedCharacterIndex(), slot, direction, travel, ability.radius, ability.shape);
 
-        // En calentamiento el golpe se ve pero no resta vida a nadie.
-        if (!IsWarmingUp && closestTarget != null && closestDistance <= closestObstacleDistance + 0.01f)
-            closestTarget.ReceiveDamage(damage);
-        else if (closestPracticeTarget != null && closestDistance <= closestObstacleDistance + 0.01f)
-            closestPracticeTarget.ApplyDamage(damage);
-
+        StartCoroutine(ResolveAbilityAfterDelay(ability, direction, travel, sourcePlayer, castSequence));
         return true;
     }
 
-    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
-    private void RPC_ShowAttackFeedback(Vector3 direction, bool ultimate, float feedbackRange)
+    private IEnumerator ResolveAbilityAfterDelay(AbilityDefinition ability, Vector3 direction, float travel,
+        int sourcePlayer, int sequence)
     {
-        ShowAttackFeedback(direction, ultimate, feedbackRange);
+        if (ability.castDelay > 0f)
+            yield return new WaitForSeconds(ability.castDelay);
+
+        if (ability.shape is AbilityShape.Leap or AbilityShape.Dash)
+            MoveForAbility(direction, travel);
+
+        // El calentamiento comparte animación y VFX, pero jamás resolución de
+        // daño o estados. Todos comienzan limpios en el mismo tick de inicio.
+        if (IsWarmingUp)
+            yield break;
+
+        Vector3 areaCenter = ability.shape is AbilityShape.Area or AbilityShape.Leap or AbilityShape.Wall
+            ? transform.position + direction * travel
+            : transform.position;
+        if (ability.shape == AbilityShape.Leap)
+            areaCenter = transform.position;
+
+        if (ability.shape == AbilityShape.Wall)
+        {
+            if (Object != null) RPC_CreateAbilityWall(areaCenter, direction, ability.radius, ability.hostileEffectDuration > 0f ? ability.hostileEffectDuration : 4f);
+            else TemporaryAbilityWall.Spawn(areaCenter, direction, ability.radius, 4f, ability.vfxColor);
+        }
+
+        HashSet<PlayerController> players = new HashSet<PlayerController>();
+        HashSet<DestructiblePracticeTarget> practiceTargets = new HashSet<DestructiblePracticeTarget>();
+        GatherAbilityTargets(ability, direction, travel, areaCenter, players, practiceTargets);
+
+        foreach (PlayerController target in players)
+        {
+            if (!IsMatchParticipant(target) || target.IsDefeated) continue;
+            if (IsAllyOf(target))
+            {
+                if (ability.alliedEffect != CombatEffectKind.None)
+                    target.ReceiveFriendlyEffect(ability.alliedEffect, ability.alliedEffectDuration,
+                        ability.alliedEffectStrength, Team, sourcePlayer, sequence);
+                continue;
+            }
+
+            target.ReceiveAbilityImpact(ability.damage, ability.hostileEffect,
+                ability.hostileEffectDuration, ability.hostileEffectStrength, direction,
+                Team, sourcePlayer, sequence, GetSelectedCharacterIndex(), ability.slot);
+        }
+
+        // Aceleración de Acatheria se aplica a quien lanza la garra; la barrera
+        // de Heliandra sí se reparte a aliados dentro de su flor.
+        if (ability.alliedEffect == CombatEffectKind.Haste)
+            ReceiveFriendlyEffect(ability.alliedEffect, ability.alliedEffectDuration,
+                ability.alliedEffectStrength, Team, sourcePlayer, sequence);
+
+        foreach (DestructiblePracticeTarget target in practiceTargets)
+            if (target != null && ability.damage > 0) target.ApplyDamage(ability.damage);
     }
 
-    private void ShowAttackFeedback(Vector3 direction, bool ultimate, float feedbackRange)
+    private void GatherAbilityTargets(AbilityDefinition ability, Vector3 direction, float travel, Vector3 areaCenter,
+        HashSet<PlayerController> players, HashSet<DestructiblePracticeTarget> practiceTargets)
+    {
+        if (ability.shape is AbilityShape.Line or AbilityShape.Dash)
+        {
+            foreach (RaycastHit hit in Physics.SphereCastAll(transform.position + Vector3.up, ability.radius,
+                         direction, travel, Physics.AllLayers, QueryTriggerInteraction.Ignore))
+                AddCombatTarget(hit.collider, players, practiceTargets);
+            return;
+        }
+
+        Vector3 center = ability.shape == AbilityShape.Cone ? transform.position : areaCenter;
+        float radius = ability.shape == AbilityShape.Cone ? ability.range : ability.radius;
+        foreach (Collider hit in Physics.OverlapSphere(center, radius, Physics.AllLayers, QueryTriggerInteraction.Ignore))
+        {
+            if (ability.shape == AbilityShape.Cone)
+            {
+                Vector3 toTarget = hit.transform.position - transform.position;
+                toTarget.y = 0f;
+                if (toTarget.sqrMagnitude > 0.01f && Vector3.Angle(direction, toTarget) > ability.coneAngle * 0.5f)
+                    continue;
+            }
+            AddCombatTarget(hit, players, practiceTargets);
+        }
+    }
+
+    private void AddCombatTarget(Collider hit, HashSet<PlayerController> players,
+        HashSet<DestructiblePracticeTarget> practiceTargets)
+    {
+        if (hit == null || hit.transform == transform || hit.transform.IsChildOf(transform)) return;
+        PlayerController playerTarget = hit.GetComponentInParent<PlayerController>();
+        if (playerTarget != null && playerTarget != this)
+        {
+            players.Add(playerTarget);
+            return;
+        }
+
+        DestructiblePracticeTarget practice = hit.GetComponentInParent<DestructiblePracticeTarget>();
+        if (practice != null) practiceTargets.Add(practice);
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_PresentAbility(int characterIndex, int slot, Vector3 direction, float travel, float radius, int shape)
+    {
+        PresentAbility(characterIndex, (AbilitySlot)slot, direction, travel, radius, (AbilityShape)shape);
+    }
+
+    private void PresentAbility(int characterIndex, AbilitySlot slot, Vector3 direction, float travel,
+        float radius, AbilityShape shape)
+    {
+        bool ultimate = slot == AbilitySlot.Ultimate;
+        TriggerCharacterAnimation(ultimate ? "ultimate" : "attack");
+        ShowAbilityFeedback(direction, travel, radius, shape, ultimate, characterIndex);
+    }
+
+    private void ShowAbilityFeedback(Vector3 direction, float feedbackRange, float radius,
+        AbilityShape shape, bool ultimate, int characterIndex)
     {
         GameObject feedback = new GameObject(ultimate ? "UltimateFeedback" : "AttackFeedback");
         LineRenderer line = feedback.AddComponent<LineRenderer>();
@@ -388,7 +643,8 @@ public class PlayerController : NetworkBehaviour
         Material feedbackMaterial = shader != null ? new Material(shader) : null;
         if (feedbackMaterial != null) line.material = feedbackMaterial;
 
-        Color color = ultimate ? new Color(0.95f, 0.75f, 0.1f, 0.95f) : new Color(0.85f, 0.18f, 0.18f, 0.95f);
+        Color color = CharacterCatalog.AbilityOf(characterIndex,
+            ultimate ? AbilitySlot.Ultimate : AbilitySlot.Basic).vfxColor;
         line.startColor = color;
         line.endColor = new Color(color.r, color.g, color.b, 0.15f);
         // Anchos pensados para la cámara actual: más finos se perdían.
@@ -407,31 +663,157 @@ public class PlayerController : NetworkBehaviour
         line.SetPosition(1, origin + direction.normalized * feedbackRange);
 
         CharacterPowerVfx.Play(gameObject, transform.position, direction.normalized, ultimate,
-            prototypeCharacterIndex, feedbackRange);
+            characterIndex, Mathf.Max(feedbackRange, radius));
 
         // 0.2 s eran 12 fotogramas: un parpadeo que se perdía.
         Destroy(feedback, 0.4f);
         if (feedbackMaterial != null) Destroy(feedbackMaterial, 0.45f);
     }
 
-    private void ReceiveDamage(int damage)
+    private void ReceiveAbilityImpact(int damage, CombatEffectKind effect, float duration, float strength,
+        Vector3 direction, int sourceTeam, int sourcePlayer, int sequence, int sourceCharacter, AbilitySlot slot)
     {
         if (Object == null)
         {
-            localHealth = Mathf.Max(0, localHealth - damage);
-            if (localHealth == 0) controlsEnabled = false;
+            ApplyAbilityImpact(damage, effect, duration, strength, direction, sourceTeam,
+                sourcePlayer, sequence, sourceCharacter, slot);
             return;
         }
-
-        RPC_ApplyDamage(damage);
+        RPC_ApplyAbilityImpact(damage, (int)effect, duration, strength, direction, sourceTeam,
+            sourcePlayer, sequence, sourceCharacter, (int)slot);
     }
 
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
-    private void RPC_ApplyDamage(int damage)
+    private void RPC_ApplyAbilityImpact(int damage, int effect, float duration, float strength,
+        Vector3 direction, int sourceTeam, int sourcePlayer, int sequence, int sourceCharacter, int slot)
     {
-        if (NetworkHealth <= 0) return;
-        NetworkHealth = Mathf.Max(0, NetworkHealth - Mathf.Clamp(damage, 0, MaxHealth));
-        if (NetworkHealth == 0) controlsEnabled = false;
+        ApplyAbilityImpact(damage, (CombatEffectKind)effect, duration, strength, direction,
+            sourceTeam, sourcePlayer, sequence, sourceCharacter, (AbilitySlot)slot);
+    }
+
+    private void ApplyAbilityImpact(int damage, CombatEffectKind effect, float duration, float strength,
+        Vector3 direction, int sourceTeam, int sourcePlayer, int sequence, int sourceCharacter, AbilitySlot slot)
+    {
+        if (Team == sourceTeam || IsDefeated || !RememberCast(sourcePlayer, sequence)) return;
+
+        int remainingDamage = MultiplayerSmokeRuntime.Invulnerable ? 0 : Mathf.Max(0, damage);
+        if (Object == null)
+        {
+            int absorbed = Mathf.Min(localShield, remainingDamage);
+            localShield -= absorbed;
+            remainingDamage -= absorbed;
+            localHealth = Mathf.Max(0, localHealth - remainingDamage);
+        }
+        else
+        {
+            int absorbed = Mathf.Min(NetworkShield, remainingDamage);
+            NetworkShield -= absorbed;
+            remainingDamage -= absorbed;
+            NetworkHealth = Mathf.Max(0, NetworkHealth - remainingDamage);
+        }
+
+        ApplyStatus(effect, duration, strength);
+
+        // Dos habilidades combinan su estado principal con desplazamiento.
+        if (effect == CombatEffectKind.Knockback ||
+            (sourceCharacter == 0 && slot == AbilitySlot.Ultimate) ||
+            (sourceCharacter == 5 && slot == AbilitySlot.Basic))
+            ApplyDisplacement(direction, Mathf.Max(2f, strength));
+
+        if (CurrentHealth <= 0) controlsEnabled = false;
+    }
+
+    private void ReceiveFriendlyEffect(CombatEffectKind effect, float duration, float strength,
+        int sourceTeam, int sourcePlayer, int sequence)
+    {
+        if (Object == null)
+        {
+            ApplyFriendlyEffect(effect, duration, strength, sourceTeam, sourcePlayer, sequence);
+            return;
+        }
+        RPC_ApplyFriendlyEffect((int)effect, duration, strength, sourceTeam, sourcePlayer, sequence);
+    }
+
+    [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+    private void RPC_ApplyFriendlyEffect(int effect, float duration, float strength,
+        int sourceTeam, int sourcePlayer, int sequence)
+    {
+        ApplyFriendlyEffect((CombatEffectKind)effect, duration, strength, sourceTeam, sourcePlayer, sequence);
+    }
+
+    private void ApplyFriendlyEffect(CombatEffectKind effect, float duration, float strength,
+        int sourceTeam, int sourcePlayer, int sequence)
+    {
+        if (Team != sourceTeam || !RememberCast(sourcePlayer, sequence + 1000000)) return;
+        if (effect == CombatEffectKind.Shield)
+        {
+            if (Object == null) localShield = Mathf.Max(localShield, Mathf.RoundToInt(strength));
+            else NetworkShield = Mathf.Max(NetworkShield, Mathf.RoundToInt(strength));
+            return;
+        }
+        ApplyStatus(effect, duration, strength);
+    }
+
+    private bool RememberCast(int sourcePlayer, int sequence)
+    {
+        long token = ((long)(sourcePlayer + 2) << 32) | (uint)sequence;
+        if (!receivedCastTokens.Add(token)) return false;
+        if (receivedCastTokens.Count > 256) receivedCastTokens.Clear();
+        return true;
+    }
+
+    private void ApplyStatus(CombatEffectKind effect, float duration, float strength)
+    {
+        if (effect == CombatEffectKind.None) return;
+        float safeDuration = Mathf.Max(0.05f, duration);
+        if (Object == null)
+        {
+            float expiry = Time.unscaledTime + safeDuration;
+            switch (effect)
+            {
+                case CombatEffectKind.Root: localRootedUntil = Mathf.Max(localRootedUntil, expiry); break;
+                case CombatEffectKind.Slow: localSlowedUntil = Mathf.Max(localSlowedUntil, expiry); break;
+                case CombatEffectKind.Silence: localSilencedUntil = Mathf.Max(localSilencedUntil, expiry); break;
+                case CombatEffectKind.Haste: localHasteUntil = Mathf.Max(localHasteUntil, expiry); break;
+                case CombatEffectKind.Stun: localStunnedUntil = Mathf.Max(localStunnedUntil, expiry); break;
+                case CombatEffectKind.Blind: localBlindUntil = Mathf.Max(localBlindUntil, expiry); break;
+                case CombatEffectKind.Reveal: localRevealUntil = Mathf.Max(localRevealUntil, expiry); break;
+            }
+            return;
+        }
+
+        TickTimer timer = TickTimer.CreateFromSeconds(Runner, safeDuration);
+        switch (effect)
+        {
+            case CombatEffectKind.Root: RootTimer = timer; break;
+            case CombatEffectKind.Slow: SlowTimer = timer; break;
+            case CombatEffectKind.Silence: SilenceTimer = timer; break;
+            case CombatEffectKind.Haste: HasteTimer = timer; break;
+            case CombatEffectKind.Stun: StunTimer = timer; break;
+            case CombatEffectKind.Blind: BlindTimer = timer; break;
+            case CombatEffectKind.Reveal: RevealTimer = timer; break;
+        }
+    }
+
+    private void ApplyDisplacement(Vector3 direction, float distance)
+    {
+        Vector3 target = transform.position + direction.normalized * distance;
+        if (NavMesh.SamplePosition(target, out NavMeshHit hit, 3f, NavMesh.AllAreas)) target = hit.position;
+        if (agent != null && agent.enabled && agent.isOnNavMesh) agent.Warp(target);
+        else transform.position = target;
+    }
+
+    private void MoveForAbility(Vector3 direction, float distance)
+    {
+        if (!CanControlPlayer()) return;
+        ApplyDisplacement(direction, distance);
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_CreateAbilityWall(Vector3 center, Vector3 direction, float width, float duration)
+    {
+        AbilityDefinition ability = GetAbility(AbilitySlot.Ultimate);
+        TemporaryAbilityWall.Spawn(center, direction, width, duration, ability.vfxColor);
     }
 
     /// <summary>
@@ -455,7 +837,7 @@ public class PlayerController : NetworkBehaviour
 
         foreach (PlayerController player in FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
         {
-            if (player.Object == null || !player.CombatReady) continue;
+            if (!IsMatchParticipant(player) || !player.CombatReady) continue;
 
             if (IsAllyOf(player))
             {
@@ -549,6 +931,7 @@ public class PlayerController : NetworkBehaviour
         prototypeAnimator = EnsureCharacterAnimator(instance, characterIndex);
         prototypeVisual = instance.transform;
         FitImportedCharacterToCollider(instance);
+        instance.transform.localPosition += CharacterCatalog.ModelLocalOffsetOf(characterIndex);
         return true;
     }
 
@@ -600,8 +983,13 @@ public class PlayerController : NetworkBehaviour
     private void FitImportedCharacterToCollider(GameObject character)
     {
         if (character == null) return;
-    character.transform.localPosition = Vector3.zero;
-    character.transform.localRotation = Quaternion.identity;
+        character.transform.localPosition = Vector3.zero;
+        character.transform.localRotation = Quaternion.identity;
+    }
+
+    private static bool IsMatchParticipant(PlayerController player)
+    {
+        return player != null && player.IsNetworkMatchParticipant && player.MatchReady;
     }
 
     private void CreateVisualPart(string partName, PrimitiveType primitiveType, Vector3 position, Vector3 scale, Color color)
@@ -643,7 +1031,92 @@ public class PlayerController : NetworkBehaviour
 
     private bool CanControlPlayer()
     {
-        return Object == null || HasStateAuthority;
+        return Object == null || (IsNetworkMatchParticipant && HasStateAuthority);
+    }
+
+    private AbilityDefinition GetAbility(AbilitySlot slot)
+    {
+        return CharacterCatalog.AbilityOf(GetSelectedCharacterIndex(), slot);
+    }
+
+    private float RemainingCooldown(AbilitySlot slot)
+    {
+        if (Object == null)
+        {
+            float readyAt = slot == AbilitySlot.Ultimate ? ultimateReadyAt : basicReadyAt;
+            return Mathf.Max(0f, readyAt - Time.unscaledTime);
+        }
+
+        if (Runner == null) return 0f;
+        TickTimer timer = slot == AbilitySlot.Ultimate ? UltimateCooldownTimer : BasicCooldownTimer;
+        return Mathf.Max(0f, timer.RemainingTime(Runner).GetValueOrDefault());
+    }
+
+    private void StartCooldown(AbilitySlot slot, float duration)
+    {
+        if (Object == null)
+        {
+            if (slot == AbilitySlot.Ultimate) ultimateReadyAt = Time.unscaledTime + duration;
+            else basicReadyAt = Time.unscaledTime + duration;
+            return;
+        }
+
+        TickTimer timer = TickTimer.CreateFromSeconds(Runner, duration);
+        if (slot == AbilitySlot.Ultimate) UltimateCooldownTimer = timer;
+        else BasicCooldownTimer = timer;
+    }
+
+    private bool IsMovementBlocked()
+    {
+        if (Object == null)
+            return Time.unscaledTime < localRootedUntil || Time.unscaledTime < localStunnedUntil;
+        return TimerActive(RootTimer) || TimerActive(StunTimer);
+    }
+
+    private bool IsCastingBlocked()
+    {
+        if (Object == null)
+            return Time.unscaledTime < localSilencedUntil || Time.unscaledTime < localStunnedUntil;
+        return TimerActive(SilenceTimer) || TimerActive(StunTimer);
+    }
+
+    private float CurrentMovementMultiplier()
+    {
+        if (Object == null)
+        {
+            if (Time.unscaledTime < localHasteUntil) return 1.3f;
+            if (Time.unscaledTime < localSlowedUntil) return 0.55f;
+            return 1f;
+        }
+
+        if (TimerActive(HasteTimer)) return 1.3f;
+        if (TimerActive(SlowTimer)) return 0.55f;
+        return 1f;
+    }
+
+    private bool TimerActive(TickTimer timer)
+    {
+        return Runner != null && !timer.ExpiredOrNotRunning(Runner);
+    }
+
+    private string BuildCombatStatusText()
+    {
+        List<string> states = new List<string>();
+        if (CurrentShield > 0) states.Add($"{GameLocalization.Choose("Barrera", "Shield")} {CurrentShield}");
+
+        bool rooted = Object == null ? Time.unscaledTime < localRootedUntil : TimerActive(RootTimer);
+        bool slowed = Object == null ? Time.unscaledTime < localSlowedUntil : TimerActive(SlowTimer);
+        bool silenced = Object == null ? Time.unscaledTime < localSilencedUntil : TimerActive(SilenceTimer);
+        bool stunned = Object == null ? Time.unscaledTime < localStunnedUntil : TimerActive(StunTimer);
+        bool blinded = Object == null ? Time.unscaledTime < localBlindUntil : TimerActive(BlindTimer);
+        bool revealed = Object == null ? Time.unscaledTime < localRevealUntil : TimerActive(RevealTimer);
+        if (rooted) states.Add(GameLocalization.Choose("Inmovilizado", "Rooted"));
+        if (slowed) states.Add(GameLocalization.Choose("Ralentizado", "Slowed"));
+        if (silenced) states.Add(GameLocalization.Choose("Silenciado", "Silenced"));
+        if (stunned) states.Add(GameLocalization.Choose("Aturdido", "Stunned"));
+        if (blinded) states.Add(GameLocalization.Choose("Cegado", "Blinded"));
+        if (revealed) states.Add(GameLocalization.Choose("Revelado", "Revealed"));
+        return string.Join(" · ", states);
     }
 
     /// <summary>
@@ -716,6 +1189,9 @@ public class PlayerController : NetworkBehaviour
 
     private Vector2 GetInputVector()
     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        if (automatedInputEnabled) return automatedMoveInput;
+#endif
         // Leer las teclas directamente evita diferencias del Input Manager
         // entre el Editor y el reproductor WebGL embebido en itch.io.
         float h = 0f;
@@ -744,16 +1220,24 @@ public class PlayerController : NetworkBehaviour
         return keyboardInput.magnitude > joystickInput.magnitude ? keyboardInput : joystickInput;
     }
 
+    public void SetAutomatedTestInput(Vector2 input)
+    {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        automatedInputEnabled = true;
+        automatedMoveInput = Vector2.ClampMagnitude(input, 1f);
+#endif
+    }
+
     /// <summary>
     /// Ataque con teclado y ratón. Las escenas de arena no tienen AttackJoystick,
     /// y PlayerCombatController solo dispara ataques desde esos joysticks, así
     /// que sin esto no había ninguna forma de atacar en PC.
-    /// Q o clic derecho: ataque básico. E: ultimate. Siempre hacia el cursor.
+    /// Q o clic derecho: ataque básico. R: definitiva. Siempre hacia el cursor.
     /// </summary>
     private void ProcessAttackInput()
     {
         bool basic = Input.GetKeyDown(KeyCode.Q) || Input.GetMouseButtonDown(1);
-        bool ultimate = Input.GetKeyDown(KeyCode.E);
+        bool ultimate = Input.GetKeyDown(KeyCode.R);
         if (!basic && !ultimate) return;
         if (IsPointerOverUI()) return;
 

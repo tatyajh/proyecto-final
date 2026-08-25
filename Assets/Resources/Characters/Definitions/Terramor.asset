@@ -15,8 +15,10 @@ MonoBehaviour:
   characterName: Terramor
   prefabPath: Characters/Terramor
   portraitPath: UI/Portraits/TerramorCutout
-  animatorControllerPath: ''
+  animatorControllerPath: Characters/Terramor
   sortOrder: 5
-  tint: {r: 0.43, g: 0.30, b: 0.20, a: 1}
+  tint: {r: 0.43, g: 0.3, b: 0.2, a: 1}
   previewScale: 1
   previewYaw: 180
+  basicAbility: {fileID: 11400000, guid: 21d4f84dcf5fbf741a19cac44d532af4, type: 2}
+  ultimateAbility: {fileID: 11400000, guid: 1e4cfdd3b8c08064c8f3e8e5bc56bc70, type: 2}

@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using UnityEngine;
+using Gameplay.Combat;
 
 /// <summary>
 /// Único lugar que sabe qué modelo corresponde a cada personaje.
@@ -26,9 +27,14 @@ public static class CharacterCatalog
         public readonly Color Tint;
         public readonly float PreviewScale;
         public readonly float PreviewYaw;
+        public readonly Vector3 ModelLocalOffset;
+        public readonly AbilityDefinition BasicAbility;
+        public readonly AbilityDefinition UltimateAbility;
 
         public Entry(string name, string prefabPath, string portraitPath, string animatorControllerPath,
-            Color tint, float previewScale = 1f, float previewYaw = 180f)
+            Color tint, float previewScale = 1f, float previewYaw = 180f,
+            Vector3 modelLocalOffset = default,
+            AbilityDefinition basicAbility = null, AbilityDefinition ultimateAbility = null)
         {
             Name = name;
             PrefabPath = prefabPath;
@@ -37,6 +43,9 @@ public static class CharacterCatalog
             Tint = tint;
             PreviewScale = previewScale;
             PreviewYaw = previewYaw;
+            ModelLocalOffset = modelLocalOffset;
+            BasicAbility = basicAbility;
+            UltimateAbility = ultimateAbility;
         }
     }
 
@@ -65,7 +74,10 @@ public static class CharacterCatalog
                     definition.animatorControllerPath,
                     definition.tint,
                     definition.previewScale,
-                    definition.previewYaw))
+                    definition.previewYaw,
+                    definition.modelLocalOffset,
+                    definition.basicAbility,
+                    definition.ultimateAbility))
                 .ToArray();
         }
 
@@ -102,6 +114,8 @@ public static class CharacterCatalog
 
     public static float PreviewYawOf(int index) => Entries[Clamp(index)].PreviewYaw;
 
+    public static Vector3 ModelLocalOffsetOf(int index) => Entries[Clamp(index)].ModelLocalOffset;
+
     /// <summary>Prefab del personaje, o null si arte todavía no lo entregó.</summary>
     public static GameObject LoadModel(int index) => Resources.Load<GameObject>(PathOf(index));
 
@@ -117,5 +131,14 @@ public static class CharacterCatalog
     {
         string path = Entries[Clamp(index)].AnimatorControllerPath;
         return string.IsNullOrWhiteSpace(path) ? null : Resources.Load<RuntimeAnimatorController>(path);
+    }
+
+    public static AbilityDefinition AbilityOf(int index, AbilitySlot slot)
+    {
+        Entry entry = Entries[Clamp(index)];
+        AbilityDefinition configured = slot == AbilitySlot.Ultimate
+            ? entry.UltimateAbility
+            : entry.BasicAbility;
+        return configured != null ? configured : AbilityCatalog.GetFallback(Clamp(index), slot);
     }
 }

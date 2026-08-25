@@ -35,7 +35,8 @@ public class NetworkLauncher : MonoBehaviour
         DiscardRunner();
     }
 
-    public async Task<bool> StartGame(GameMode mode, MatchModeDefinition matchMode, int sceneIndex)
+    public async Task<bool> StartGame(GameMode mode, MatchModeDefinition matchMode, int sceneIndex,
+        string requestedSessionName = null)
     {
         if (matchMode == null)
             matchMode = MatchModeCatalog.Default;
@@ -47,7 +48,8 @@ public class NetworkLauncher : MonoBehaviour
 
         try
         {
-            Task<StartGameResult> connectionTask = ConnectPhotonFusionToCloud(mode, matchMode, sceneIndex);
+            Task<StartGameResult> connectionTask = ConnectPhotonFusionToCloud(
+                mode, matchMode, sceneIndex, requestedSessionName);
             Task completedTask = await Task.WhenAny(connectionTask, Task.Delay(ConnectionTimeoutMilliseconds));
             if (completedTask != connectionTask)
             {
@@ -161,7 +163,8 @@ public class NetworkLauncher : MonoBehaviour
         _networkRunner = null;
     }
 
-    private async Task<StartGameResult> ConnectPhotonFusionToCloud(GameMode mode, MatchModeDefinition matchMode, int sceneIndex)
+    private async Task<StartGameResult> ConnectPhotonFusionToCloud(GameMode mode,
+        MatchModeDefinition matchMode, int sceneIndex, string requestedSessionName)
     {
         NetworkSceneManagerDefault sceneManager =
             _networkRunner.gameObject.AddComponent<NetworkSceneManagerDefault>();
@@ -173,7 +176,12 @@ public class NetworkLauncher : MonoBehaviour
             GameMode = mode,
             // Sin nombre fijo, Fusion llena primero una sala compatible y
             // crea una nueva únicamente cuando no existe ninguna disponible.
-            SessionName = null,
+            // En producción permanece null y FillRoom hace matchmaking normal.
+            // El arnés puede fijar un nombre único para que muchos procesos
+            // lanzados en el mismo milisegundo no creen salas paralelas.
+            SessionName = string.IsNullOrWhiteSpace(requestedSessionName)
+                ? null
+                : requestedSessionName,
             // Fusion usa esta propiedad como filtro del matchmaking aleatorio,
             // así que un jugador de 3v3 nunca entra a una sala abierta de 1v1.
             // Se mantiene el formato "Room_x" y una sola clave string: es el

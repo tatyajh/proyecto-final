@@ -21,6 +21,7 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
     private bool _localSpawnInProgress;
     private readonly List<PlayerController> _playerBuffer = new List<PlayerController>();
     private Coroutine _balanceRoutine;
+    private bool _matchStartRequested;
 
     private void Start()
     {
@@ -95,13 +96,14 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
 
         if (playerCount >= required)
         {
-            // Con la sala llena los equipos quedan fijos y parejos antes del primer golpe.
+            // Solo el master publica el inicio, después de que los avatares ya
+            // tengan equipo y slot. Los demás continúan en calentamiento hasta
+            // recibir MatchReady en su propio NetworkObject.
             BalanceTeams(runner);
-            OnlineMatchState.Set(
-                OnlineMatchPhase.Playing,
-                MatchContext.TeamSize > 1
-                    ? $"{MatchContext.Mode.DisplayName} · {MatchTeams.NameOf(MatchTeams.Bloom)} vs {MatchTeams.NameOf(MatchTeams.Blight)}"
-                    : string.Empty);
+            OnlineMatchState.Set(OnlineMatchPhase.WaitingForOpponent,
+                GameLocalization.Choose(
+                    $"Sala completa {playerCount}/{required}. Formando equipos…",
+                    $"Room full {playerCount}/{required}. Assigning teams…"));
 
             if (runner.IsSharedModeMasterClient && runner.SessionInfo != null)
                 runner.SessionInfo.IsOpen = false;
@@ -179,6 +181,7 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
     private void BalanceTeams(NetworkRunner runner)
     {
         if (!runner.IsSharedModeMasterClient) return;
+        if (_matchStartRequested) return;
         if (_balanceRoutine != null) return;
 
         _balanceRoutine = StartCoroutine(BalanceWhenAvatarsReady(runner));
@@ -223,6 +226,17 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
         }
         Debug.Log(summary.ToString());
 
+        // Deja que las asignaciones alcancen a sus autoridades antes de abrir
+        // el daño. Todos reciben el mismo MatchReady replicado.
+        yield return new WaitForSecondsRealtime(0.15f);
+        CollectSpawnedPlayers();
+        foreach (PlayerController player in _playerBuffer)
+            player.RequestMatchStart();
+
+        _matchStartRequested = true;
+        OnlineMatchState.Set(OnlineMatchPhase.Playing,
+            $"{MatchContext.Mode.DisplayName} · {MatchTeams.NameOf(MatchTeams.Bloom)} vs {MatchTeams.NameOf(MatchTeams.Blight)}");
+
         _balanceRoutine = null;
     }
 
@@ -230,7 +244,7 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
     {
         _playerBuffer.Clear();
         foreach (PlayerController player in FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
-            if (player.Object != null && player.Object.InputAuthority.IsValid)
+            if (player.IsNetworkMatchParticipant)
                 _playerBuffer.Add(player);
     }
 
@@ -282,7 +296,7 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
     public void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
     {
         // En 2v2 y 3v3 la partida sigue mientras el equipo rival conserve gente.
-        if (OnlineMatchState.Phase == OnlineMatchPhase.Playing)
+        if (_matchStartRequested || AnyAvatarStarted())
         {
             if (HasEmptyTeam(runner, player))
                 OnlineMatchState.Set(OnlineMatchPhase.OpponentDisconnected, GameLocalization.Choose("El equipo rival abandonó la partida.", "The opposing team left the match."));
@@ -293,6 +307,13 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
         }
 
         RefreshMatchState(runner);
+    }
+
+    private static bool AnyAvatarStarted()
+    {
+        foreach (PlayerController player in FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
+            if (player.IsNetworkMatchParticipant && player.MatchReady) return true;
+        return false;
     }
 
     private static bool HasEmptyTeam(NetworkRunner runner, PlayerRef leaving)

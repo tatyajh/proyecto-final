@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a666241ef41b454f80318f299ce973d2, type: 3}
+  m_Name: Heliandra_Basic
+  m_EditorClassIdentifier: Assembly-CSharp::Gameplay.Combat.AbilityDefinition
+  abilityId: heliandra_root
+  spanishName: "Ra\xEDz de Alba"
+  englishName: Dawn Root
+  slot: 0
+  shape: 0
+  range: 6
+  radius: 0.65
+  coneAngle: 55
+  castDelay: 0
+  damage: 20
+  cooldown: 1
+  hostileEffect: 1
+  hostileEffectDuration: 1.25
+  hostileEffectStrength: 0
+  alliedEffect: 0
+  alliedEffectDuration: 0
+  alliedEffectStrength: 0
+  vfxColor: {r: 0.93, g: 0.88, b: 0.62, a: 1}
