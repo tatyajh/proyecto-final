@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using DG.Tweening;
 using TMPro;
@@ -755,6 +756,21 @@ public sealed class BlightedIntroFlow : MonoBehaviour
 
         SetLayerRecursively(previewModel, PreviewLayer);
         FitPreview(previewModel);
+        StartCoroutine(RefitNextFrame(previewModel));
+    }
+
+    /// <summary>
+    /// Bounds de un SkinnedMeshRenderer recién instanciado pueden venir del
+    /// bind pose, no de la pose real del Animator (que todavía no corrió su
+    /// primer Update) — eso hacía que algunos personajes se vieran chicos o
+    /// descentrados en el encuadre. Un reencuadre un frame después, ya con el
+    /// Animator evaluado, corrige la escala/posición sin que se note el salto.
+    /// </summary>
+    private IEnumerator RefitNextFrame(GameObject model)
+    {
+        yield return null;
+        if (model == null || model != previewModel) yield break;
+        FitPreview(model);
     }
 
     private void FitPreviewTextureRect(Texture texture, Vector2 maximum)
