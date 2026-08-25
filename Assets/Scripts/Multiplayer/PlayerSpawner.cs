@@ -261,6 +261,10 @@ public class PlayerSpawner : MonoBehaviour, INetworkRunnerCallbacks
             int slot = MatchTeams.SlotForPlayerId(player.PlayerId, teamSize);
 
             Vector3 assignedSpawn = spawnPosition + MatchTeams.SpawnOffset(team, slot, teamSize);
+            if (UnityEngine.AI.NavMesh.SamplePosition(assignedSpawn, out UnityEngine.AI.NavMeshHit hit, 5.0f, UnityEngine.AI.NavMesh.AllAreas))
+            {
+                assignedSpawn = hit.position;
+            }
             Quaternion assignedRotation = MatchTeams.SpawnRotation(team);
             Debug.Log($"<color=green>[PlayerSpawner] EXITO: Instanciando el prefab para {player} " +
                       $"(equipo {MatchTeams.NameOf(team)}, puesto {slot}) en {assignedSpawn}</color>");

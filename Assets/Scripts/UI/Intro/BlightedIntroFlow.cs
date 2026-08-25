@@ -686,7 +686,7 @@ public sealed class BlightedIntroFlow : MonoBehaviour
         previewCamera.backgroundColor = Color.clear;
         previewCamera.cullingMask = previewMask;
         previewCamera.fieldOfView = 30f;
-        previewCamera.transform.localPosition = new Vector3(0f, 2.2f, -8.5f);
+        previewCamera.transform.localPosition = new Vector3(0f, 3f, -8.5f);
         previewCamera.transform.localRotation = Quaternion.Euler(4f, 0f, 0f);
 
         // Las luces de color fuerte (ámbar + azul) se veían atmosféricas pero
