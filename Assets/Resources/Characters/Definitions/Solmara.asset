@@ -18,7 +18,7 @@ MonoBehaviour:
   animatorControllerPath: Characters/Solmara
   sortOrder: 2
   tint: {r: 0.83, g: 0.66, b: 0.2, a: 1}
-  previewScale: 2.5
+  previewScale: 1
   previewYaw: 180
   basicAbility: {fileID: 11400000, guid: 7ea4f51dc7491a9489183496d3e36a38, type: 2}
   ultimateAbility: {fileID: 11400000, guid: def242e65e8d4b647bcc1e2ddb9bbf09, type: 2}
