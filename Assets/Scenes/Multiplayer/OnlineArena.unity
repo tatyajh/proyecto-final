@@ -1462,7 +1462,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4221582320331334570, guid: ee03f61c633fa8849a79100609d9bbe4, type: 3}
       propertyPath: m_Name
-      value: Santuario2
+      value: Arbol de la Abundancia
       objectReference: {fileID: 0}
     - target: {fileID: 6811416378397234015, guid: ee03f61c633fa8849a79100609d9bbe4, type: 3}
       propertyPath: m_NavMeshData
