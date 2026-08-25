@@ -630,6 +630,10 @@ public class PlayerController : NetworkBehaviour
         bool ultimate = slot == AbilitySlot.Ultimate;
         TriggerCharacterAnimation(ultimate ? "ultimate" : "attack");
         ShowAbilityFeedback(direction, travel, radius, shape, ultimate, characterIndex);
+
+        AbilityDefinition ability = CharacterCatalog.AbilityOf(characterIndex, slot);
+        if (ability != null && ability.castSfx != null)
+            AudioCatalog.PlayOneShot(ability.castSfx, transform.position);
     }
 
     private void ShowAbilityFeedback(Vector3 direction, float feedbackRange, float radius,
