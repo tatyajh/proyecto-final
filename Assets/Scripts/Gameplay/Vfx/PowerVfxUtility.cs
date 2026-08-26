@@ -1,13 +1,23 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
 namespace BlightedBlossoms.Gameplay.Vfx
 {
-    internal static class PowerVfxUtility
+    public static class PowerVfxUtility
     {
         private const string RuntimeMaterialResource = "Vfx/Powers/RayUltimate";
         public const string ParticleLibraryRoot = "Vfx/ThirdParty/KenneyParticles/";
+        public static readonly string[] RequiredParticleTextures =
+        {
+            "circle_05", "light_03", "magic_01", "magic_03", "magic_05",
+            "scorch_02", "slash_02", "smoke_05", "spark_04", "star_07",
+            "symbol_02", "trace_04", "twirl_02"
+        };
+
         private static Material runtimeTemplate;
+        private static readonly Dictionary<string, Texture2D> TextureCache =
+            new Dictionary<string, Texture2D>();
 
         public static Material CreateTransparentMaterial(
             Color color,
@@ -44,7 +54,7 @@ namespace BlightedBlossoms.Gameplay.Vfx
 
             if (!string.IsNullOrWhiteSpace(textureResource))
             {
-                Texture2D texture = Resources.Load<Texture2D>(textureResource);
+                Texture2D texture = LoadTexture(textureResource);
                 if (texture != null)
                 {
                     if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", texture);
@@ -65,6 +75,15 @@ namespace BlightedBlossoms.Gameplay.Vfx
                 additive ? (float)BlendMode.One : (float)BlendMode.OneMinusSrcAlpha);
             material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
             return material;
+        }
+
+        public static Texture2D LoadTexture(string resourcePath)
+        {
+            if (string.IsNullOrWhiteSpace(resourcePath)) return null;
+            if (TextureCache.TryGetValue(resourcePath, out Texture2D cached)) return cached;
+            Texture2D texture = Resources.Load<Texture2D>(resourcePath);
+            TextureCache[resourcePath] = texture;
+            return texture;
         }
 
         public static GameObject CreateGroundDisc(Transform parent, string name, Material material)

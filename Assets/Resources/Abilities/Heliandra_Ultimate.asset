@@ -17,7 +17,7 @@ MonoBehaviour:
   englishName: Last Dawn Blossom
   slot: 1
   shape: 2
-  range: 8.5
+  range: 9.5
   radius: 3.2
   coneAngle: 55
   castDelay: 0

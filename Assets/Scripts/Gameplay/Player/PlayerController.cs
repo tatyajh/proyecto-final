@@ -849,47 +849,22 @@ public class PlayerController : NetworkBehaviour
             ? ability.castAnimationTrigger
             : ultimate ? "ultimate" : "attack";
         TriggerCharacterAnimation(animationTrigger);
-        ShowAbilityFeedback(direction, travel, radius, shape, ultimate, characterIndex, ability);
+        ShowAbilityFeedback(direction, travel, radius, characterIndex, ability);
 
         if (ability != null && ability.castSfx != null)
             AudioCatalog.PlayOneShot(ability.castSfx, transform.position);
     }
 
     private void ShowAbilityFeedback(Vector3 direction, float feedbackRange, float radius,
-        AbilityShape shape, bool ultimate, int characterIndex, AbilityDefinition ability)
+        int characterIndex, AbilityDefinition ability)
     {
-        GameObject feedback = new GameObject(ultimate ? "UltimateFeedback" : "AttackFeedback");
-        LineRenderer line = feedback.AddComponent<LineRenderer>();
-        Shader shader = Shader.Find("Sprites/Default");
-        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
-
-        Material feedbackMaterial = shader != null ? new Material(shader) : null;
-        if (feedbackMaterial != null) line.material = feedbackMaterial;
-
-        Color color = ability != null ? ability.vfxColor : CharacterCatalog.TintOf(characterIndex);
-        line.startColor = color;
-        line.endColor = new Color(color.r, color.g, color.b, 0.15f);
-        // Anchos pensados para la cámara actual: más finos se perdían.
-        line.startWidth = ultimate ? 0.70f : 0.42f;
-        line.endWidth = ultimate ? 0.26f : 0.14f;
-        line.positionCount = 2;
-        line.useWorldSpace = true;
-
-        // Salía a 0.8 de altura, de cuando el personaje medía menos. Con 4.5
-        // unidades eso es a la altura de los tobillos y en vista en picado el
-        // propio modelo lo tapaba. Ahora sale del pecho.
-        // El modelo puede crecer para la cámara sin subir el origen del VFX
-        // hasta la cara. De otro modo la esfera termina tapando al personaje.
         Vector3 origin = ResolveCastOrigin(direction, characterIndex);
-        line.SetPosition(0, origin);
-        line.SetPosition(1, origin + direction.normalized * feedbackRange);
-
+        // CharacterPowerVfx ya dibuja el telegráfico, el viaje y el impacto.
+        // Antes se creaba además una línea gruesa de prototipo que quedaba por
+        // encima de las partículas nuevas y hacía que todos los ataques
+        // siguieran pareciendo el VFX antiguo.
         CharacterPowerVfx.Play(gameObject, ability, origin, direction.normalized,
             characterIndex, Mathf.Max(feedbackRange, radius));
-
-        // 0.2 s eran 12 fotogramas: un parpadeo que se perdía.
-        Destroy(feedback, 0.4f);
-        if (feedbackMaterial != null) Destroy(feedbackMaterial, 0.45f);
     }
 
     /// <summary>

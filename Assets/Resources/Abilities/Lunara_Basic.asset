@@ -17,7 +17,7 @@ MonoBehaviour:
   englishName: Arcane Needle
   slot: 0
   shape: 0
-  range: 8
+  range: 9
   radius: 0.55
   coneAngle: 55
   castDelay: 0

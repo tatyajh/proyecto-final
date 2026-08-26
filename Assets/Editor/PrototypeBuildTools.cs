@@ -215,6 +215,13 @@ public static class PrototypeBuildTools
         if (Resources.Load<Material>("Vfx/Powers/RayUltimate") == null)
             errors.Add("Falta Resources/Vfx/Powers/RayUltimate: WebGL podría ocultar los VFX por shader stripping.");
 
+        foreach (string textureName in BlightedBlossoms.Gameplay.Vfx.PowerVfxUtility.RequiredParticleTextures)
+        {
+            string path = BlightedBlossoms.Gameplay.Vfx.PowerVfxUtility.ParticleLibraryRoot + textureName;
+            if (Resources.Load<Texture2D>(path) == null)
+                errors.Add($"Falta la textura principal de poderes Resources/{path}.");
+        }
+
         string[] pickupSprites =
         {
             "Vfx/Pickups/VitalityBloom",

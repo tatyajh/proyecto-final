@@ -17,7 +17,7 @@ MonoBehaviour:
   englishName: Pollen Eclipse
   slot: 1
   shape: 2
-  range: 9
+  range: 10
   radius: 3.1
   coneAngle: 55
   castDelay: 0.85

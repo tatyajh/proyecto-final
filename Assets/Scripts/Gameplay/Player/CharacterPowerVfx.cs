@@ -145,55 +145,61 @@ public sealed class CharacterPowerVfx : MonoBehaviour
     {
         Color primary = ability.vfxColor;
         Color accent = IdentityAccent();
-        int strands;
-        switch (characterIndex)
-        {
-            case 0: strands = 5; break;
-            case 1: strands = 3; break;
-            case 2: strands = 4; break;
-            case 3: strands = 4; break;
-            case 4: strands = 3; break;
-            default: strands = 7; break;
-        }
-
-        GameObject projectile = GameObject.CreatePrimitive(characterIndex == 1
-            ? PrimitiveType.Capsule : PrimitiveType.Sphere);
-        projectile.name = characterIndex == 5 ? "Rosa marchita" : "Cuerpo mágico";
+        GameObject projectile = new GameObject(IdentityProjectileName());
         projectile.transform.SetParent(transform, true);
         projectile.transform.position = origin;
-        projectile.transform.localScale = characterIndex == 5
-            ? new Vector3(0.55f, 0.24f, 0.55f)
-            : Vector3.one * (ability.slot == AbilitySlot.Ultimate ? 0.48f : 0.28f);
-        Destroy(projectile.GetComponent<Collider>());
-        projectile.GetComponent<Renderer>().sharedMaterial = NewMaterial(accent, IdentityCoreTexture(), true);
 
-        for (int i = 0; i < strands; i++)
-        {
-            GameObject petal = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            petal.name = characterIndex == 5 ? "Pétalo de rosa corrupta" : "Pétalo mágico";
-            petal.transform.SetParent(projectile.transform, false);
-            float angle = i * 360f / strands;
-            petal.transform.localPosition = Quaternion.Euler(0f, angle, 0f) * Vector3.forward * 0.72f;
-            petal.transform.localRotation = Quaternion.Euler(35f, angle, 0f);
-            petal.transform.localScale = new Vector3(0.38f, 0.16f, 0.74f);
-            Destroy(petal.GetComponent<Collider>());
-            petal.GetComponent<Renderer>().sharedMaterial = NewMaterial(
-                Color.Lerp(primary, accent, 0.45f), IdentityBurstTexture(), true);
-        }
+        float sizeMultiplier = ability.slot == AbilitySlot.Ultimate ? 1.35f : 1f;
+        ParticleSystem core = CreateTravelParticles(projectile.transform, "Núcleo mágico",
+            accent, IdentityCoreTexture(), 0.08f, 56f, 0.32f * sizeMultiplier, 0.72f * sizeMultiplier);
+        ParticleSystem trail = CreateTravelParticles(projectile.transform, IdentityTrailName(),
+            Color.Lerp(primary, accent, 0.55f), IdentityTrailTexture(), 0.22f, 42f,
+            0.13f * sizeMultiplier, 0.34f * sizeMultiplier);
+        ParticleSystem ornaments = CreateTravelParticles(projectile.transform, IdentityOrnamentName(),
+            primary, IdentityBurstTexture(), 0.30f, 24f,
+            0.18f * sizeMultiplier, 0.46f * sizeMultiplier);
 
-        Material trailMaterial = NewMaterial(new Color(accent.r, accent.g, accent.b, 0.78f),
-            IdentityTrailTexture(), true);
-        ParticleSystem trail = PowerVfxUtility.CreateParticles(projectile.transform,
-            IdentityTrailName(), accent, trailMaterial, 0.24f, 72, false);
-        ParticleSystem.MainModule trailMain = trail.main;
-        trailMain.simulationSpace = ParticleSystemSimulationSpace.World;
-        trailMain.startLifetime = new ParticleSystem.MinMaxCurve(0.16f, 0.42f);
-        trailMain.startSpeed = new ParticleSystem.MinMaxCurve(0.08f, 0.52f);
-        trailMain.startSize = new ParticleSystem.MinMaxCurve(0.06f, 0.19f);
-        ParticleSystem.EmissionModule trailEmission = trail.emission;
-        trailEmission.rateOverTime = ability.slot == AbilitySlot.Ultimate ? 48f : 30f;
+        ConfigureWorldTrail(core, 0.12f, 0.30f);
+        ConfigureWorldTrail(trail, 0.20f, 0.54f);
+        ConfigureWorldTrail(ornaments, 0.28f, 0.62f);
+        core.Play();
         trail.Play();
-        yield return MoveProjectile(projectile.transform, origin, destination, 0.24f);
+        ornaments.Play();
+
+        Light glow = projectile.AddComponent<Light>();
+        glow.type = LightType.Point;
+        glow.color = accent;
+        glow.range = ability.slot == AbilitySlot.Ultimate ? 5.2f : 3.4f;
+        glow.intensity = ability.slot == AbilitySlot.Ultimate ? 2.1f : 1.25f;
+        glow.shadows = LightShadows.None;
+
+        float travelDuration = ability.slot == AbilitySlot.Ultimate ? 0.48f : 0.38f;
+        yield return MoveProjectile(projectile.transform, origin, destination, travelDuration);
+    }
+
+    private ParticleSystem CreateTravelParticles(Transform parent, string label, Color color,
+        string texture, float radius, float emissionRate, float minSize, float maxSize)
+    {
+        Material material = NewMaterial(new Color(color.r, color.g, color.b, 0.94f), texture, true);
+        ParticleSystem particles = PowerVfxUtility.CreateParticles(parent, label, color,
+            material, radius, 96, false);
+        ParticleSystem.MainModule main = particles.main;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.22f, 0.52f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(0.04f, 0.40f);
+        main.startSize = new ParticleSystem.MinMaxCurve(minSize, maxSize);
+        ParticleSystem.EmissionModule emission = particles.emission;
+        emission.rateOverTime = emissionRate;
+        ParticleSystemRenderer renderer = particles.GetComponent<ParticleSystemRenderer>();
+        renderer.renderMode = ParticleSystemRenderMode.Billboard;
+        renderer.sortingFudge = 1.5f;
+        return particles;
+    }
+
+    private static void ConfigureWorldTrail(ParticleSystem particles, float minLifetime, float maxLifetime)
+    {
+        ParticleSystem.MainModule main = particles.main;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(minLifetime, maxLifetime);
     }
 
     private IEnumerator MoveProjectile(Transform projectile, Vector3 start, Vector3 end, float duration)
@@ -217,11 +223,15 @@ public sealed class CharacterPowerVfx : MonoBehaviour
         Color color = ability.vfxColor;
         Color accent = IdentityAccent();
 
-        PowerVfxUtility.SpawnBurst(Ground(destination), accent,
-            ability.slot == AbilitySlot.Ultimate ? 70 : 38,
-            Mathf.Max(0.32f, ability.radius * 0.18f),
-            ability.slot == AbilitySlot.Ultimate ? 1.2f : 0.9f,
+        int burstCount = ability.slot == AbilitySlot.Ultimate ? 88 : 52;
+        float burstScale = ability.slot == AbilitySlot.Ultimate ? 1.45f : 1.05f;
+        PowerVfxUtility.SpawnBurst(Ground(destination) + Vector3.up * 0.18f, accent,
+            burstCount, Mathf.Max(0.38f, ability.radius * 0.20f), burstScale,
             IdentityBurstTexture());
+        PowerVfxUtility.SpawnBurst(Ground(destination) + Vector3.up * 0.45f,
+            Color.Lerp(color, Color.white, 0.24f), burstCount / 2,
+            Mathf.Max(0.28f, ability.radius * 0.12f), burstScale * 0.82f,
+            IdentityCoreTexture(), false);
 
         switch (characterIndex)
         {
@@ -251,14 +261,42 @@ public sealed class CharacterPowerVfx : MonoBehaviour
                 break;
         }
 
-        AreaExplosionVfx explosion = impact.AddComponent<AreaExplosionVfx>();
-        explosion.Configure(Mathf.Max(1.1f, ability.radius), 0.52f,
-            ability.slot == AbilitySlot.Ultimate ? 72 : 34, color);
-        explosion.Execute();
+        ParticleSystem rising = CreateImpactParticles(impact.transform, accent);
+        rising.Emit(ability.slot == AbilitySlot.Ultimate ? 54 : 30);
         if (actor != null && characterIndex == 4)
             CharacterAuraVfx.Play(actor, new Color(0.30f, 0.92f, 0.32f, 0.9f), 1.2f);
-        yield return new WaitForSeconds(0.62f);
+        yield return AnimateImpact(impact.transform, 0.72f);
         Destroy(impact);
+    }
+
+    private ParticleSystem CreateImpactParticles(Transform parent, Color accent)
+    {
+        Material material = NewMaterial(accent, IdentityBurstTexture(), true);
+        ParticleSystem particles = PowerVfxUtility.CreateParticles(parent, IdentityImpactName(),
+            accent, material, Mathf.Max(0.45f, ability.radius * 0.45f), 128, false);
+        ParticleSystem.MainModule main = particles.main;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.38f, 0.92f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(1.8f, 5.4f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.16f,
+            ability.slot == AbilitySlot.Ultimate ? 0.72f : 0.48f);
+        main.gravityModifier = new ParticleSystem.MinMaxCurve(-0.18f, 0.12f);
+        ParticleSystemRenderer renderer = particles.GetComponent<ParticleSystemRenderer>();
+        renderer.renderMode = ParticleSystemRenderMode.Billboard;
+        renderer.sortingFudge = 2f;
+        return particles;
+    }
+
+    private static IEnumerator AnimateImpact(Transform impact, float duration)
+    {
+        Vector3 initialScale = Vector3.one * 0.72f;
+        Vector3 finalScale = Vector3.one * 1.22f;
+        for (float elapsed = 0f; elapsed < duration; elapsed += Time.deltaTime)
+        {
+            if (impact == null) yield break;
+            float t = Mathf.Clamp01(elapsed / duration);
+            impact.localScale = Vector3.Lerp(initialScale, finalScale, Mathf.SmoothStep(0f, 1f, t));
+            yield return null;
+        }
     }
 
     private void CreateRays(Transform parent, int count, Color color, float length, string label)
@@ -406,6 +444,45 @@ public sealed class CharacterPowerVfx : MonoBehaviour
             3 => "Eco silenciado",
             4 => "Rastro de veneno",
             _ => "Rosas marchitas"
+        };
+    }
+
+    private string IdentityProjectileName()
+    {
+        return characterIndex switch
+        {
+            0 => "Raíz de alba y pétalos luminosos",
+            1 => "Aguja arcana violeta",
+            2 => "Rayo solar marchito",
+            3 => "Eco mudo",
+            4 => "Garra venenosa",
+            _ => "Rosa marchita corrupta"
+        };
+    }
+
+    private string IdentityOrnamentName()
+    {
+        return characterIndex switch
+        {
+            0 => "Flores blancas y destellos dorados",
+            1 => "Símbolos del oráculo",
+            2 => "Chispas solares",
+            3 => "Partículas de silencio",
+            4 => "Espinas verdes",
+            _ => "Pétalos corruptos"
+        };
+    }
+
+    private string IdentityImpactName()
+    {
+        return characterIndex switch
+        {
+            0 => "Flor del último alba",
+            1 => "Oráculo de medianoche",
+            2 => "Eclipse de polen",
+            3 => "Réquiem sin eco",
+            4 => "Estallido depredador",
+            _ => "Jardín de rosas marchitas"
         };
     }
 
