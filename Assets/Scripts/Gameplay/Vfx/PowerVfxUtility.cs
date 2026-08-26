@@ -6,9 +6,13 @@ namespace BlightedBlossoms.Gameplay.Vfx
     internal static class PowerVfxUtility
     {
         private const string RuntimeMaterialResource = "Vfx/Powers/RayUltimate";
+        public const string ParticleLibraryRoot = "Vfx/ThirdParty/KenneyParticles/";
         private static Material runtimeTemplate;
 
-        public static Material CreateTransparentMaterial(Color color)
+        public static Material CreateTransparentMaterial(
+            Color color,
+            string textureResource = null,
+            bool additive = false)
         {
             // Un material guardado en Resources fuerza a WebGL a conservar el
             // shader. Shader.Find funcionaba en Editor, pero el stripping del
@@ -38,12 +42,27 @@ namespace BlightedBlossoms.Gameplay.Vfx
             material.color = color;
             material.renderQueue = (int)RenderQueue.Transparent;
 
+            if (!string.IsNullOrWhiteSpace(textureResource))
+            {
+                Texture2D texture = Resources.Load<Texture2D>(textureResource);
+                if (texture != null)
+                {
+                    if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", texture);
+                    if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", texture);
+                }
+                else
+                {
+                    Debug.LogWarning($"[PowerVfx] No se encontró la textura Resources/{textureResource}.");
+                }
+            }
+
             if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
             if (material.HasProperty("_Color")) material.SetColor("_Color", color);
             if (material.HasProperty("_Surface")) material.SetFloat("_Surface", 1f);
             if (material.HasProperty("_ZWrite")) material.SetFloat("_ZWrite", 0f);
             if (material.HasProperty("_SrcBlend")) material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
-            if (material.HasProperty("_DstBlend")) material.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+            if (material.HasProperty("_DstBlend")) material.SetFloat("_DstBlend",
+                additive ? (float)BlendMode.One : (float)BlendMode.OneMinusSrcAlpha);
             material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
             return material;
         }
@@ -89,8 +108,65 @@ namespace BlightedBlossoms.Gameplay.Vfx
 
             ParticleSystem.EmissionModule emission = system.emission;
             emission.rateOverTime = 0f;
+
+            ParticleSystem.ColorOverLifetimeModule colorOverLifetime = system.colorOverLifetime;
+            colorOverLifetime.enabled = true;
+            Gradient fade = new Gradient();
+            fade.SetKeys(
+                new[]
+                {
+                    new GradientColorKey(Color.white, 0f),
+                    new GradientColorKey(Color.white, 1f)
+                },
+                new[]
+                {
+                    new GradientAlphaKey(0f, 0f),
+                    new GradientAlphaKey(1f, 0.12f),
+                    new GradientAlphaKey(0.92f, 0.62f),
+                    new GradientAlphaKey(0f, 1f)
+                });
+            colorOverLifetime.color = fade;
+
+            ParticleSystem.SizeOverLifetimeModule sizeOverLifetime = system.sizeOverLifetime;
+            sizeOverLifetime.enabled = true;
+            sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(1f,
+                new AnimationCurve(
+                    new Keyframe(0f, 0.15f),
+                    new Keyframe(0.18f, 1f),
+                    new Keyframe(1f, 0f)));
+
+            ParticleSystem.RotationOverLifetimeModule rotation = system.rotationOverLifetime;
+            rotation.enabled = true;
+            rotation.z = new ParticleSystem.MinMaxCurve(-2.8f, 2.8f);
+
+            ParticleSystem.NoiseModule noise = system.noise;
+            noise.enabled = true;
+            noise.strength = falling ? 0.22f : 0.10f;
+            noise.frequency = 0.45f;
+            noise.scrollSpeed = 0.18f;
+
             system.GetComponent<ParticleSystemRenderer>().sharedMaterial = material;
             return system;
+        }
+
+        public static void SpawnBurst(Vector3 position, Color color, int count = 28,
+            float radius = 0.35f, float scale = 1f,
+            string textureResource = null, bool additive = true)
+        {
+            GameObject root = new GameObject("Botanical magic burst");
+            root.transform.position = position;
+            root.transform.localScale = Vector3.one * Mathf.Max(0.1f, scale);
+            Material material = CreateTransparentMaterial(color, textureResource, additive);
+            ParticleSystem particles = CreateParticles(root.transform, "Sparks and petals", color,
+                material, radius, Mathf.Max(64, count), false);
+            ParticleSystem.MainModule main = particles.main;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.38f, 0.95f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(1.4f, 4.8f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.07f, 0.24f);
+            main.gravityModifier = new ParticleSystem.MinMaxCurve(-0.08f, 0.18f);
+            particles.Emit(Mathf.Clamp(count, 8, 96));
+            Object.Destroy(root, 1.6f);
+            if (material != null) Object.Destroy(material, 1.7f);
         }
     }
 }

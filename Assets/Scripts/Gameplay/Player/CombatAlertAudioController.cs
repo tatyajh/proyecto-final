@@ -11,8 +11,10 @@ public sealed class CombatAlertAudioController : MonoBehaviour
     private const float CriticalRearmThreshold = 0.40f;
     private const float ApproachWarningRadius = 15f;
     private const float ApproachRearmRadius = 19f;
+    private const float HardApproachRadius = 11f;
     private const float MinimumClosingSpeed = 0.12f;
-    private const float SustainedApproachSeconds = 0.25f;
+    private const float SustainedApproachSeconds = 0.20f;
+    private const float AlertMusicLevel = 0.28f;
 
     private PlayerController owner;
     private AudioSource source;
@@ -24,7 +26,8 @@ public sealed class CombatAlertAudioController : MonoBehaviour
     private bool lowHealthArmed = true;
     private bool approachArmed = true;
     private PlayerController trackedEnemy;
-    private Vector3 previousEnemyPosition;
+    private float previousEnemyDistance;
+    private bool hasPreviousEnemyDistance;
     private float previousSampleAt;
     private float nextSampleAt;
     private float approachingFor;
@@ -46,8 +49,10 @@ public sealed class CombatAlertAudioController : MonoBehaviour
         lowHealthClip = Resources.Load<AudioClip>("Audio/SFX/low_health");
         defeatClip = Resources.Load<AudioClip>("Audio/SFX/game_over");
         victoryClip = Resources.Load<AudioClip>("Audio/SFX/victory");
-        if (approachClip != null && approachClip.loadState == AudioDataLoadState.Unloaded)
-            approachClip.LoadAudioData();
+        Preload(approachClip, "enemy_approach");
+        Preload(lowHealthClip, "low_health");
+        Preload(defeatClip, "game_over");
+        Preload(victoryClip, "victory");
 
         source = gameObject.AddComponent<AudioSource>();
         source.playOnAwake = false;
@@ -56,6 +61,27 @@ public sealed class CombatAlertAudioController : MonoBehaviour
         source.priority = 16;
         source.ignoreListenerPause = true;
         source.outputAudioMixerGroup = AudioCatalog.SfxGroup;
+    }
+
+    /// <summary>
+    /// Rehabilita las alertas al comenzar una ronda, revancha o nuevo rival.
+    /// La torre reutiliza al jugador entre combates, por lo que Awake no vuelve
+    /// a ejecutarse y el estado de resultado debe limpiarse explícitamente.
+    /// </summary>
+    public void ResetForRound()
+    {
+        resultPlayed = false;
+        lowHealthArmed = true;
+        approachArmed = true;
+        trackedEnemy = null;
+        hasPreviousEnemyDistance = false;
+        previousEnemyDistance = float.PositiveInfinity;
+        previousSampleAt = Time.unscaledTime;
+        nextSampleAt = 0f;
+        approachingFor = 0f;
+        approachAllowedAt = 0f;
+        if (source != null) source.Stop();
+        MusicPlayer.Instance?.SetCombatAlertDuck(false);
     }
 
     private void Update()
@@ -70,7 +96,7 @@ public sealed class CombatAlertAudioController : MonoBehaviour
         }
         if (resultPlayed) return;
 
-        float healthRatio = owner.CurrentHealth / (float)PlayerController.MaxHealth;
+        float healthRatio = owner.CurrentHealth / (float)Mathf.Max(1, owner.HealthMaximum);
         if (healthRatio > CriticalRearmThreshold) lowHealthArmed = true;
         if (lowHealthArmed && healthRatio > 0f && healthRatio <= CriticalThreshold)
         {
@@ -95,6 +121,7 @@ public sealed class CombatAlertAudioController : MonoBehaviour
             approachArmed = true;
             approachingFor = 0f;
             trackedEnemy = null;
+            hasPreviousEnemyDistance = false;
             previousSampleAt = now;
             return;
         }
@@ -102,26 +129,22 @@ public sealed class CombatAlertAudioController : MonoBehaviour
         if (nearest != trackedEnemy)
         {
             trackedEnemy = nearest;
-            previousEnemyPosition = nearest.transform.position;
+            previousEnemyDistance = nearestDistance;
+            hasPreviousEnemyDistance = true;
             previousSampleAt = now;
-            // El duelo local empieza dentro del radio de aviso. Esa entrada
-            // inicial también debe oírse aunque el bot tarde en dar su paso.
             approachingFor = 0f;
-            return;
         }
 
         float deltaTime = Mathf.Max(0.001f, now - previousSampleAt);
-        Vector3 velocity = (nearest.transform.position - previousEnemyPosition) / deltaTime;
-        Vector3 towardOwner = owner.transform.position - nearest.transform.position;
-        towardOwner.y = 0f;
-        float closingSpeed = towardOwner.sqrMagnitude > 0.001f
-            ? Vector3.Dot(velocity, towardOwner.normalized)
+        float closingSpeed = hasPreviousEnemyDistance
+            ? (previousEnemyDistance - nearestDistance) / deltaTime
             : 0f;
-        previousEnemyPosition = nearest.transform.position;
+        previousEnemyDistance = nearestDistance;
+        hasPreviousEnemyDistance = true;
         previousSampleAt = now;
 
         if (approachArmed && nearestDistance <= ApproachWarningRadius &&
-            (closingSpeed >= MinimumClosingSpeed || nearestDistance <= 10.5f))
+            (closingSpeed >= MinimumClosingSpeed || nearestDistance <= HardApproachRadius))
             approachingFor += deltaTime;
         else
             approachingFor = 0f;
@@ -142,6 +165,28 @@ public sealed class CombatAlertAudioController : MonoBehaviour
         source.clip = clip;
         source.volume = source.outputAudioMixerGroup != null ? volume : volume * SettingsManager.SfxVolume;
         source.Play();
+        MusicPlayer.Instance?.SetCombatAlertDuck(true, AlertMusicLevel);
+        CancelInvoke(nameof(ReleaseMusicDuck));
+        Invoke(nameof(ReleaseMusicDuck), Mathf.Max(0.25f, clip.length + 0.15f));
+    }
+
+    private void ReleaseMusicDuck() => MusicPlayer.Instance?.SetCombatAlertDuck(false);
+
+    private void OnDisable()
+    {
+        CancelInvoke(nameof(ReleaseMusicDuck));
+        MusicPlayer.Instance?.SetCombatAlertDuck(false);
+    }
+
+    private static void Preload(AudioClip clip, string resourceName)
+    {
+        if (clip == null)
+        {
+            Debug.LogError($"[CombatAudio] Falta Resources/Audio/SFX/{resourceName}.");
+            return;
+        }
+        if (clip.loadState == AudioDataLoadState.Unloaded && !clip.LoadAudioData())
+            Debug.LogWarning($"[CombatAudio] No fue posible precargar '{resourceName}'.");
     }
 
     private PlayerController FindNearestEnemy(out float nearestDistance)
@@ -159,4 +204,17 @@ public sealed class CombatAlertAudioController : MonoBehaviour
         }
         return nearest;
     }
+
+#if UNITY_EDITOR
+    public bool DebugIsPlaying => source != null && source.isPlaying;
+    public string DebugCurrentAlert => source == null || source.clip == null
+        ? string.Empty
+        : source.clip == approachClip ? "enemy_approach"
+        : source.clip == lowHealthClip ? "low_health"
+        : source.clip == defeatClip ? "game_over"
+        : source.clip == victoryClip ? "victory"
+        : source.clip.name;
+    public bool DebugResultPlayed => resultPlayed;
+    public void DebugPlayApproachAlert() => PlayPriority(approachClip, 1f, false);
+#endif
 }

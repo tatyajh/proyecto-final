@@ -141,6 +141,11 @@ public static class MovementCombatSmokeTool
                 failures.Add($"{name} conserva un desfase vertical de {signedGroundOffset:+0.000;-0.000} unidades.");
         }
 
+        // La Escalera de la Podredumbre pausa los controles mientras muestra
+        // la carta de rival. El smoke valida el combatiente aislado, así que
+        // debe habilitarlo explícitamente antes de disparar ambas habilidades.
+        player.ResetLocalCombatState(player.transform.position, player.transform.rotation);
+        player.SetLocalControlsEnabled(true);
         AimData aim = new AimData { Direction = player.transform.forward, DistanceRatio = 1f, IsTap = true };
         if (!player.TryCastAbility(AbilitySlot.Basic, aim)) failures.Add($"{name}: básica no se pudo lanzar.");
         if (!player.TryCastAbility(AbilitySlot.Ultimate, aim)) failures.Add($"{name}: definitiva no se pudo lanzar.");

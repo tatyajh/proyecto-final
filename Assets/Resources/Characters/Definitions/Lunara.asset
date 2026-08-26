@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   characterName: Lunara
   prefabPath: Characters/Lunara
-  portraitPath:
+  portraitPath: UI/Portraits/LunaraPortrait
   animatorControllerPath: Characters/Lunara
   sortOrder: 1
   tint: {r: 0.34, g: 0.48, b: 0.76, a: 1}

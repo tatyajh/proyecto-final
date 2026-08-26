@@ -31,9 +31,14 @@ public sealed class CombatTrainingBootstrap : MonoBehaviour
     private Coroutine duelRoutine;
     private Vector3 duelForward;
     private int previousOpponent = -1;
+    private TrainingRunController runController;
+    private int requestedOpponent = -1;
+    private int requestedDifficulty = 1;
+    private float requestedHealthMultiplier = 1f;
 
     public PlayerController Player => player;
     public PlayerController Opponent => opponent;
+    public TrainingRunController Run => runController;
     public bool DuelActive => player != null && opponent != null &&
         !player.IsDefeated && !opponent.IsDefeated;
 
@@ -97,8 +102,9 @@ public sealed class CombatTrainingBootstrap : MonoBehaviour
         player = localPlayer;
 
         duelForward = ResolveDuelForward(player.transform);
-
-        StartNewDuel();
+        runController = GetComponent<TrainingRunController>();
+        if (runController == null) runController = gameObject.AddComponent<TrainingRunController>();
+        runController.Initialize(this, player);
     }
 
     private void Update()
@@ -121,8 +127,48 @@ public sealed class CombatTrainingBootstrap : MonoBehaviour
     public void StartNewDuel()
     {
         if (!isActiveAndEnabled || player == null) return;
+        if (runController != null)
+        {
+            runController.RetryOrStartCurrent();
+            return;
+        }
+        requestedOpponent = ChooseOpponent(player.SelectedCharacterIndex);
+        requestedDifficulty = 1;
+        requestedHealthMultiplier = 1f;
+        StartRequestedDuel();
+    }
+
+    public void BeginTowerDuel(int opponentIndex, int difficultyLevel, float healthMultiplier)
+    {
+        if (!isActiveAndEnabled || player == null) return;
+        requestedOpponent = CharacterCatalog.Clamp(opponentIndex);
+        requestedDifficulty = Mathf.Clamp(difficultyLevel, 1, 5);
+        requestedHealthMultiplier = Mathf.Max(1f, healthMultiplier);
+        StartRequestedDuel();
+    }
+
+    private void StartRequestedDuel()
+    {
         if (duelRoutine != null) StopCoroutine(duelRoutine);
         duelRoutine = StartCoroutine(RebuildDuel());
+    }
+
+    public void PauseDuel()
+    {
+        player?.SetLocalControlsEnabled(false);
+        opponent?.SetLocalControlsEnabled(false);
+        ArenaPowerUpManager.Instance?.SetSimulationPaused(true);
+    }
+
+    public void ClearOpponent()
+    {
+        if (opponentObject != null)
+        {
+            opponentObject.SetActive(false);
+            Destroy(opponentObject);
+        }
+        opponentObject = null;
+        opponent = null;
     }
 
     private IEnumerator RebuildDuel()
@@ -155,7 +201,9 @@ public sealed class CombatTrainingBootstrap : MonoBehaviour
         opponent = null;
         yield return null;
 
-        int opponentIndex = ChooseOpponent(player.SelectedCharacterIndex);
+        int opponentIndex = requestedOpponent >= 0
+            ? CharacterCatalog.Clamp(requestedOpponent)
+            : ChooseOpponent(player.SelectedCharacterIndex);
         opponentObject = characterSpawner.SpawnLocalCombatant(LocalCombatantConfig.Bot(opponentIndex),
             opponentPosition, Quaternion.LookRotation(-facing));
         if (opponentObject == null)
@@ -172,16 +220,22 @@ public sealed class CombatTrainingBootstrap : MonoBehaviour
             yield break;
         }
 
-        opponent.ResetLocalCombatState(opponentPosition, Quaternion.LookRotation(-facing));
+        opponent.ResetLocalCombatState(opponentPosition, Quaternion.LookRotation(-facing),
+            requestedHealthMultiplier);
         TrainingBotController ai = opponentObject.GetComponent<TrainingBotController>();
         if (ai == null) ai = opponentObject.AddComponent<TrainingBotController>();
+        ai.ConfigureDifficulty(requestedDifficulty);
         ai.Configure(opponent, player);
 
         ArenaPowerUpManager powerUps = ArenaPowerUpManager.EnsureFor(player);
         if (powerUps != null)
+        {
             powerUps.ConfigureTraining(player, opponent, center);
+            powerUps.SetSimulationPaused(false);
+        }
 
         previousOpponent = opponentIndex;
+        runController?.BindOpponent(opponent);
         duelRoutine = null;
         float actualSeparation = Vector3.Distance(player.transform.position, opponent.transform.position);
         Debug.Log($"[CombatTraining] Duelo listo: {player.PlayerDisplayName} contra " +

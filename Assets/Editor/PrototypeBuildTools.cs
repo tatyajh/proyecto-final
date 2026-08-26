@@ -225,14 +225,25 @@ public static class PrototypeBuildTools
             if (Resources.Load<Sprite>(path) == null)
                 errors.Add($"Falta el sprite identificable del beneficio Resources/{path}.");
 
+        string storyVideo = Path.Combine(Application.streamingAssetsPath, "Trailer", "menu.mp4");
+        if (!File.Exists(storyVideo))
+            errors.Add("Falta StreamingAssets/Trailer/menu.mp4 para el fondo del prólogo.");
+        if (Resources.Load<Texture2D>("UI/Intro/PrologueVideoFallback") == null)
+            errors.Add("Falta la imagen de respaldo UI/Intro/PrologueVideoFallback.");
+
         for (int character = 0; character < CharacterCatalog.Count; character++)
         {
             foreach (AbilitySlot slot in new[] { AbilitySlot.Basic, AbilitySlot.Ultimate })
             {
                 AbilityDefinition ability = CharacterCatalog.AbilityOf(character, slot);
                 if (ability == null) errors.Add($"{CharacterCatalog.NameOf(character)} no tiene {slot}.");
-                else if (ability.range < 5.5f)
-                    errors.Add($"{CharacterCatalog.NameOf(character)} · {ability.DisplayName}: rango demasiado corto ({ability.range:0.0}).");
+                else
+                {
+                    if (ability.range < 5.5f)
+                        errors.Add($"{CharacterCatalog.NameOf(character)} · {ability.DisplayName}: rango demasiado corto ({ability.range:0.0}).");
+                    if (ability.LoadIcon() == null)
+                        errors.Add($"{CharacterCatalog.NameOf(character)} · {ability.DisplayName}: falta su icono de HUD.");
+                }
             }
         }
     }

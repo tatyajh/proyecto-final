@@ -30,4 +30,5 @@ MonoBehaviour:
   alliedEffectDuration: 2
   alliedEffectStrength: 0.3
   vfxColor: {r: 0.42, g: 0.82, b: 0.36, a: 1}
+  iconResourcePath: UI/HUD/Abilities/Acatheria_Basic
   castSfx: {fileID: 8300000, guid: 3cc826ae2ec61c349a5445a515ad0463, type: 3}

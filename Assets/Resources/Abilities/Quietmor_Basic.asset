@@ -30,4 +30,5 @@ MonoBehaviour:
   alliedEffectDuration: 0
   alliedEffectStrength: 0
   vfxColor: {r: 0.58, g: 0.3, b: 0.76, a: 1}
+  iconResourcePath: UI/HUD/Abilities/Quietmor_Basic
   castSfx: {fileID: 8300000, guid: 8202d27819f1978409a415444e963f4e, type: 3}

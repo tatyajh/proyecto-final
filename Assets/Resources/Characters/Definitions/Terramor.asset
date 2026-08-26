@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   characterName: Terramor
   prefabPath: Characters/Terramor
-  portraitPath:
+  portraitPath: UI/Portraits/TerramorPortrait
   animatorControllerPath: Characters/Terramor
   sortOrder: 5
   tint: {r: 0.43, g: 0.3, b: 0.2, a: 1}

@@ -16,6 +16,8 @@ public sealed class TrainingBotController : MonoBehaviour
     [SerializeField, Range(0f, 25f)] private float aimErrorDegrees = 6f;
     [SerializeField, Min(1f)] private float personalSpaceDistance = 6f;
     [SerializeField, Range(0.5f, 1f)] private float movementSpeedMultiplier = 0.82f;
+    [SerializeField, Range(0f, 1f)] private float pickupSeekChance = 0.28f;
+    [SerializeField, Range(0f, 1f)] private float ultimateUseChance = 0.72f;
 
     private PlayerController bot;
     private PlayerController target;
@@ -36,6 +38,22 @@ public sealed class TrainingBotController : MonoBehaviour
         nextCastAt = start;
         nextPlanAt = start;
         plan = BotPlan.Strafe;
+    }
+
+    /// <summary>
+    /// La torre aumenta lectura y ejecución, nunca el daño. El nivel se recibe
+    /// en el rango 1..5 y también es útil desde herramientas de testing.
+    /// </summary>
+    public void ConfigureDifficulty(int level)
+    {
+        float t = Mathf.Clamp01((Mathf.Clamp(level, 1, 5) - 1) / 4f);
+        decisionInterval = Mathf.Lerp(0.38f, 0.22f, t);
+        reactionDelay = Mathf.Lerp(0.86f, 0.36f, t);
+        openingGracePeriod = Mathf.Lerp(4f, 2.8f, t);
+        aimErrorDegrees = Mathf.Lerp(9f, 2f, t);
+        movementSpeedMultiplier = Mathf.Lerp(0.78f, 0.94f, t);
+        pickupSeekChance = Mathf.Lerp(0.16f, 0.48f, t);
+        ultimateUseChance = Mathf.Lerp(0.52f, 0.96f, t);
     }
 
     private void Awake()
@@ -71,7 +89,7 @@ public sealed class TrainingBotController : MonoBehaviour
 
         if (ArenaPowerUpManager.Instance != null &&
             ArenaPowerUpManager.Instance.TryGetBestPickup(bot, out Vector3 pickup) &&
-            (bot.CurrentHealth <= PlayerController.MaxHealth * 0.62f || Random.value < 0.28f))
+            (bot.CurrentHealth <= bot.HealthMaximum * 0.62f || Random.value < pickupSeekChance))
         {
             plan = BotPlan.SeekPickup;
             planDestination = pickup;
@@ -116,7 +134,8 @@ public sealed class TrainingBotController : MonoBehaviour
     {
         if (Time.time < nextCastAt || plan == BotPlan.Retreat) return;
         AbilitySlot? slot = null;
-        if (bot.UltimateCooldownRemaining <= 0f && distance <= bot.UltimateAbilityRange * 1.05f)
+        if (bot.UltimateCooldownRemaining <= 0f && distance <= bot.UltimateAbilityRange * 1.05f &&
+            Random.value <= ultimateUseChance)
             slot = AbilitySlot.Ultimate;
         else if (bot.BasicCooldownRemaining <= 0f && distance <= bot.BasicAbilityRange * 1.05f)
             slot = AbilitySlot.Basic;

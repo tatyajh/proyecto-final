@@ -55,6 +55,7 @@ public sealed class BlightedIntroFlow : MonoBehaviour
     private readonly MenuFlowController<Phase> flow = new MenuFlowController<Phase>(CrossFadeSeconds);
 
     private PrologueSequence prologue;
+    private PrologueVideoBackground prologueVideo;
     private SporeAtmosphere atmosphere;
     private TMP_InputField nameField;
     private TMP_Text statusLabel;
@@ -121,6 +122,8 @@ public sealed class BlightedIntroFlow : MonoBehaviour
         }
 
         BuildCanvas();
+        prologueVideo = gameObject.AddComponent<PrologueVideoBackground>();
+        prologueVideo.Build(canvas.transform);
         BuildProgressRail();
         BuildAtmosphere();
         BuildProloguePhase();
@@ -1214,6 +1217,8 @@ public sealed class BlightedIntroFlow : MonoBehaviour
         // El prólogo pide penumbra; el resto del flujo, algo más de vida.
         if (atmosphere != null)
             atmosphere.SetIntensity(next == Phase.Prologue ? 0.35f : 0.65f);
+        if (next == Phase.Prologue) prologueVideo?.Play();
+        else prologueVideo?.Hide();
         RefreshProgressRail(next);
     }
 
@@ -1238,7 +1243,11 @@ public sealed class BlightedIntroFlow : MonoBehaviour
                 onlineCharacterAction.gameObject.SetActive(selectedRoute == MenuPlayRoute.Online);
         }
 
-        if (next == Phase.Prologue) prologue.Play();
+        if (next == Phase.Prologue)
+        {
+            prologueVideo?.Play();
+            prologue.Play();
+        }
     }
 
     private void OnDestroy()

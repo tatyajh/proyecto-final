@@ -20,6 +20,10 @@ public class MusicPlayer : MonoBehaviour
     private AudioSource sourceB;
     private AudioSource activeSource;
     private Coroutine fadeRoutine;
+    private Coroutine duckRoutine;
+    private float sourceAEnvelope;
+    private float sourceBEnvelope;
+    private float duckMultiplier = 1f;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void Bootstrap()
@@ -50,6 +54,8 @@ public class MusicPlayer : MonoBehaviour
             source.outputAudioMixerGroup = musicGroup;
         }
         activeSource = sourceA;
+        sourceAEnvelope = 0f;
+        sourceBEnvelope = 0f;
         SceneManager.sceneLoaded -= HandleSceneLoaded;
         SceneManager.sceneLoaded += HandleSceneLoaded;
     }
@@ -100,6 +106,8 @@ public class MusicPlayer : MonoBehaviour
             if (!activeSource.isPlaying)
             {
                 activeSource.volume = 1f;
+                SetEnvelope(activeSource, 1f);
+                ApplyVolumes();
                 activeSource.Play();
             }
             return;
@@ -115,27 +123,42 @@ public class MusicPlayer : MonoBehaviour
         fadeRoutine = StartCoroutine(FadeOutAndStop(fadeSeconds));
     }
 
+    /// <summary>
+    /// Baja únicamente la música durante avisos importantes de combate. El
+    /// volumen configurado por el jugador sigue viviendo en el AudioMixer.
+    /// </summary>
+    public void SetCombatAlertDuck(bool ducked, float duckedLevel = 0.28f, float fadeSeconds = 0.12f)
+    {
+        float target = ducked ? Mathf.Clamp(duckedLevel, 0.05f, 1f) : 1f;
+        if (duckRoutine != null) StopCoroutine(duckRoutine);
+        duckRoutine = StartCoroutine(FadeDuck(target, fadeSeconds));
+    }
+
     private IEnumerator CrossfadeTo(AudioClip clip, float fadeSeconds)
     {
         AudioSource incoming = activeSource == sourceA ? sourceB : sourceA;
         AudioSource outgoing = activeSource;
 
         incoming.clip = clip;
-        incoming.volume = 0f;
+        SetEnvelope(incoming, 0f);
+        ApplyVolumes();
         incoming.Play();
 
         float t = 0f;
-        float outgoingStartVolume = outgoing.volume;
+        float outgoingStartVolume = GetEnvelope(outgoing);
         while (t < fadeSeconds)
         {
             t += Time.unscaledDeltaTime;
             float ratio = fadeSeconds > 0f ? Mathf.Clamp01(t / fadeSeconds) : 1f;
-            incoming.volume = ratio;
-            outgoing.volume = outgoingStartVolume * (1f - ratio);
+            SetEnvelope(incoming, ratio);
+            SetEnvelope(outgoing, outgoingStartVolume * (1f - ratio));
+            ApplyVolumes();
             yield return null;
         }
 
-        incoming.volume = 1f;
+        SetEnvelope(incoming, 1f);
+        SetEnvelope(outgoing, 0f);
+        ApplyVolumes();
         outgoing.Stop();
         activeSource = incoming;
         fadeRoutine = null;
@@ -143,16 +166,50 @@ public class MusicPlayer : MonoBehaviour
 
     private IEnumerator FadeOutAndStop(float fadeSeconds)
     {
-        float startVolume = activeSource.volume;
+        float startVolume = GetEnvelope(activeSource);
         float t = 0f;
         while (t < fadeSeconds)
         {
             t += Time.unscaledDeltaTime;
-            activeSource.volume = startVolume * (1f - Mathf.Clamp01(t / fadeSeconds));
+            SetEnvelope(activeSource, startVolume * (1f - Mathf.Clamp01(t / fadeSeconds)));
+            ApplyVolumes();
             yield return null;
         }
 
         activeSource.Stop();
+        SetEnvelope(activeSource, 0f);
+        ApplyVolumes();
         fadeRoutine = null;
+    }
+
+    private IEnumerator FadeDuck(float target, float fadeSeconds)
+    {
+        float start = duckMultiplier;
+        float t = 0f;
+        while (t < fadeSeconds)
+        {
+            t += Time.unscaledDeltaTime;
+            duckMultiplier = Mathf.Lerp(start, target,
+                fadeSeconds > 0f ? Mathf.Clamp01(t / fadeSeconds) : 1f);
+            ApplyVolumes();
+            yield return null;
+        }
+        duckMultiplier = target;
+        ApplyVolumes();
+        duckRoutine = null;
+    }
+
+    private float GetEnvelope(AudioSource source) => source == sourceA ? sourceAEnvelope : sourceBEnvelope;
+
+    private void SetEnvelope(AudioSource source, float value)
+    {
+        if (source == sourceA) sourceAEnvelope = Mathf.Clamp01(value);
+        else sourceBEnvelope = Mathf.Clamp01(value);
+    }
+
+    private void ApplyVolumes()
+    {
+        if (sourceA != null) sourceA.volume = sourceAEnvelope * duckMultiplier;
+        if (sourceB != null) sourceB.volume = sourceBEnvelope * duckMultiplier;
     }
 }

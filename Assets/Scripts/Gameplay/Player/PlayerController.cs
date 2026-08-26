@@ -46,6 +46,7 @@ public class PlayerController : NetworkBehaviour
     private bool controlsEnabled = true;
     private Camera mainCam;
     private int localHealth = MaxHealth;
+    private int localMaxHealth = MaxHealth;
     private float basicReadyAt;
     private float ultimateReadyAt;
     private float localRootedUntil;
@@ -65,6 +66,7 @@ public class PlayerController : NetworkBehaviour
     private Vector2 automatedMoveInput;
     private readonly HashSet<long> receivedCastTokens = new HashSet<long>();
     private Transform prototypeVisual;
+    private Transform contactShadow;
     private Animator prototypeAnimator;
     private int prototypeCharacterIndex = -1;
     private bool groundImportedVisual;
@@ -75,6 +77,7 @@ public class PlayerController : NetworkBehaviour
     private bool localCombatantConfigured;
     private CombatTargetingController targetingController;
     private Coroutine presentationPauseRoutine;
+    private static Sprite contactShadowSprite;
 
     [Networked] public int NetworkHealth { get; private set; }
     [Networked] public NetworkBool CombatReady { get; private set; }
@@ -108,6 +111,7 @@ public class PlayerController : NetworkBehaviour
     [Networked] private TickTimer ArenaCorruptionTimer { get; set; }
 
     public int CurrentHealth => Object == null || !CombatReady ? localHealth : NetworkHealth;
+    public int HealthMaximum => Object == null ? localMaxHealth : MaxHealth;
     public bool IsDefeated => (Object == null || CombatReady) && CurrentHealth <= 0;
     public bool HasLocalControl => AcceptsHumanInput();
     public string PlayerDisplayName => GetDisplayName();
@@ -117,6 +121,8 @@ public class PlayerController : NetworkBehaviour
     public float UltimateCooldownDuration => GetAbility(AbilitySlot.Ultimate).cooldown;
     public string BasicAbilityName => GetAbility(AbilitySlot.Basic).DisplayName;
     public string UltimateAbilityName => GetAbility(AbilitySlot.Ultimate).DisplayName;
+    public Texture2D BasicAbilityIcon => GetAbility(AbilitySlot.Basic).LoadIcon();
+    public Texture2D UltimateAbilityIcon => GetAbility(AbilitySlot.Ultimate).LoadIcon();
     public float BasicAbilityRange => GetAbility(AbilitySlot.Basic).range;
     public float UltimateAbilityRange => GetAbility(AbilitySlot.Ultimate).range;
     public int CurrentShield => Object == null ? localShield : NetworkShield;
@@ -160,6 +166,14 @@ public class PlayerController : NetworkBehaviour
     public bool HasPowerPickup => Object == null
         ? Time.unscaledTime < localPickupPowerUntil
         : TimerActive(PickupPowerTimer);
+    public float PickupHasteDuration => 6f;
+    public float PickupPowerDuration => 10f;
+    public float PickupHasteRemaining => Object == null
+        ? Mathf.Max(0f, localPickupHasteUntil - Time.unscaledTime)
+        : RemainingTimer(PickupHasteTimer);
+    public float PickupPowerRemaining => Object == null
+        ? Mathf.Max(0f, localPickupPowerUntil - Time.unscaledTime)
+        : RemainingTimer(PickupPowerTimer);
 
     /// <summary>Equipo efectivo en red o en el duelo local de entrenamiento.</summary>
     public int Team => Object == null
@@ -196,12 +210,13 @@ public class PlayerController : NetworkBehaviour
     }
 
     /// <summary>Restaura por completo un combatiente local para una revancha.</summary>
-    public void ResetLocalCombatState(Vector3 position, Quaternion rotation)
+    public void ResetLocalCombatState(Vector3 position, Quaternion rotation, float healthMultiplier = 1f)
     {
         if (Object != null) return;
 
         StopAllCoroutines();
-        localHealth = MaxHealth;
+        localMaxHealth = Mathf.Max(MaxHealth, Mathf.RoundToInt(MaxHealth * Mathf.Max(1f, healthMultiplier)));
+        localHealth = localMaxHealth;
         localShield = 0;
         basicReadyAt = 0f;
         ultimateReadyAt = 0f;
@@ -219,6 +234,7 @@ public class PlayerController : NetworkBehaviour
         currentOutcome = MatchOutcome.Undecided;
         controlsEnabled = true;
         exitConfirmationVisible = false;
+        CombatAlertAudioController.EnsureFor(this)?.ResetForRound();
 
         transform.SetPositionAndRotation(position, rotation);
         if (agent == null) agent = GetComponent<NavMeshAgent>();
@@ -231,6 +247,13 @@ public class PlayerController : NetworkBehaviour
         if (prototypeVisual != null)
             StartCoroutine(StabilizeImportedCharacterGrounding(prototypeVisual.gameObject,
                 CharacterCatalog.ModelLocalOffsetOf(SelectedCharacterIndex).y));
+    }
+
+    public void SetLocalControlsEnabled(bool value)
+    {
+        if (Object != null) return;
+        controlsEnabled = value && !IsDefeated;
+        if (!controlsEnabled) StopBotMovement();
     }
 
     public bool TrySetBotDestination(Vector3 destination, float speedMultiplier = 1f)
@@ -570,7 +593,10 @@ public class PlayerController : NetworkBehaviour
         // visual más bajo sobre el NavMesh no altera la escala 4.5 ni mueve la
         // raíz que Fusion/NavMesh sincronizan.
         if (groundImportedVisual && prototypeVisual != null)
+        {
             FitImportedCharacterToCollider(prototypeVisual.gameObject, importedVisualGroundOffset);
+            UpdateContactShadow();
+        }
     }
 
     public override void FixedUpdateNetwork()
@@ -1134,6 +1160,8 @@ public class PlayerController : NetworkBehaviour
 
         if (prototypeVisual != null)
             Destroy(prototypeVisual.gameObject);
+        if (contactShadow != null)
+            Destroy(contactShadow.gameObject);
 
         groundImportedVisual = false;
         importedVisualGroundOffset = 0f;
@@ -1191,6 +1219,8 @@ public class PlayerController : NetworkBehaviour
         groundImportedVisual = true;
         instance.transform.localPosition = new Vector3(presentationOffset.x, 0f, presentationOffset.z);
         FitImportedCharacterToCollider(instance, presentationOffset.y);
+        EnsureContactShadow();
+        UpdateContactShadow();
         StartCoroutine(StabilizeImportedCharacterGrounding(instance, presentationOffset.y));
         return true;
     }
@@ -1292,11 +1322,96 @@ public class PlayerController : NetworkBehaviour
         int areaMask = agent != null ? agent.areaMask : NavMesh.AllAreas;
         if (NavMesh.SamplePosition(transform.position, out NavMeshHit groundHit, 8f, areaMask))
             groundY = groundHit.position.y;
+        groundY = ResolveVisibleSurfaceY(groundY);
         // modelLocalOffset.y es una corrección calibrada por arte. Calcular el
         // destino absoluto del bounds vuelve esta operación idempotente: puede
         // repetirse tras una animación o revancha sin acumular altura.
-        float desiredMinimumY = groundY + authoredGroundOffset * Mathf.Abs(transform.lossyScale.y);
+        float desiredMinimumY = groundY - 0.025f +
+            authoredGroundOffset * Mathf.Abs(transform.lossyScale.y);
         character.transform.position += Vector3.up * (desiredMinimumY - visualBounds.min.y);
+    }
+
+    /// <summary>
+    /// El NavMesh de la arena queda ligeramente por encima de algunas mallas
+    /// visibles. La raíz jugable permanece sobre navegación, pero el arte se
+    /// apoya en la superficie física más cercana para no parecer suspendido.
+    /// </summary>
+    private float ResolveVisibleSurfaceY(float navigationY)
+    {
+        Vector3 origin = new Vector3(transform.position.x, navigationY + 12f, transform.position.z);
+        RaycastHit[] hits = Physics.RaycastAll(origin, Vector3.down, 30f,
+            Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        float bestY = navigationY;
+        float bestDistance = float.PositiveInfinity;
+        foreach (RaycastHit hit in hits)
+        {
+            if (hit.collider == null || hit.collider.transform.IsChildOf(transform)) continue;
+            PlayerController hitPlayer = hit.collider.GetComponentInParent<PlayerController>();
+            if (hitPlayer != null) continue;
+            if (hit.point.y > navigationY + 0.6f) continue;
+            float distance = Mathf.Abs(hit.point.y - navigationY);
+            if (distance > 3f || distance >= bestDistance) continue;
+            bestDistance = distance;
+            bestY = hit.point.y;
+        }
+        return bestY;
+    }
+
+    private void EnsureContactShadow()
+    {
+        if (contactShadow != null) return;
+        GameObject shadow = new GameObject("Ground contact shadow", typeof(SpriteRenderer));
+        shadow.transform.SetParent(transform, false);
+        shadow.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        shadow.transform.localScale = new Vector3(0.56f, 0.32f, 1f);
+        SpriteRenderer renderer = shadow.GetComponent<SpriteRenderer>();
+        renderer.sprite = GetContactShadowSprite();
+        renderer.color = new Color(0.015f, 0.008f, 0.02f, 0.42f);
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        renderer.receiveShadows = false;
+        renderer.sortingOrder = -20;
+        contactShadow = shadow.transform;
+    }
+
+    private void UpdateContactShadow()
+    {
+        if (contactShadow == null) return;
+        float navigationY = transform.position.y;
+        int areaMask = agent != null ? agent.areaMask : NavMesh.AllAreas;
+        if (NavMesh.SamplePosition(transform.position, out NavMeshHit hit, 8f, areaMask))
+            navigationY = hit.position.y;
+        float surfaceY = ResolveVisibleSurfaceY(navigationY);
+        contactShadow.position = new Vector3(transform.position.x, surfaceY + 0.035f,
+            transform.position.z);
+    }
+
+    private static Sprite GetContactShadowSprite()
+    {
+        if (contactShadowSprite != null) return contactShadowSprite;
+        const int size = 48;
+        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false, true)
+        {
+            name = "Runtime soft contact shadow",
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = FilterMode.Bilinear,
+            hideFlags = HideFlags.HideAndDontSave
+        };
+        Color[] pixels = new Color[size * size];
+        for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++)
+        {
+            Vector2 uv = new Vector2((x + 0.5f) / size * 2f - 1f,
+                (y + 0.5f) / size * 2f - 1f);
+            float alpha = Mathf.Pow(Mathf.Clamp01(1f - uv.sqrMagnitude), 1.7f);
+            pixels[y * size + x] = new Color(1f, 1f, 1f, alpha);
+        }
+        texture.SetPixels(pixels);
+        texture.Apply(false, true);
+        contactShadowSprite = Sprite.Create(texture, new Rect(0f, 0f, size, size),
+            new Vector2(0.5f, 0.5f), size);
+        contactShadowSprite.name = "Runtime soft contact shadow";
+        contactShadowSprite.hideFlags = HideFlags.HideAndDontSave;
+        return contactShadowSprite;
     }
 
     private static bool IsCombatParticipantForAbilities(PlayerController player)
@@ -1426,6 +1541,11 @@ public class PlayerController : NetworkBehaviour
         return Runner != null && !timer.ExpiredOrNotRunning(Runner);
     }
 
+    private float RemainingTimer(TickTimer timer)
+    {
+        return Runner == null ? 0f : Mathf.Max(0f, timer.RemainingTime(Runner).GetValueOrDefault());
+    }
+
     private string BuildCombatStatusText()
     {
         List<string> states = new List<string>();
@@ -1465,8 +1585,8 @@ public class PlayerController : NetworkBehaviour
         switch (type)
         {
             case ArenaPickupType.Vitality:
-                int healing = Mathf.CeilToInt(MaxHealth * 0.15f);
-                if (Object == null) localHealth = Mathf.Min(MaxHealth, localHealth + healing);
+                int healing = Mathf.CeilToInt(HealthMaximum * 0.15f);
+                if (Object == null) localHealth = Mathf.Min(localMaxHealth, localHealth + healing);
                 else NetworkHealth = Mathf.Min(MaxHealth, NetworkHealth + healing);
                 break;
             case ArenaPickupType.Haste:

@@ -21,6 +21,10 @@ public sealed class CombatHudController : MonoBehaviour
     private TMP_Text nameLabel;
     private TMP_Text healthLabel;
     private Image healthFill;
+    private GameObject buffRow;
+    private StatusBar hasteBar;
+    private StatusBar powerBar;
+    private StatusBar shieldBar;
     private TMP_Text teamLabel;
     private TMP_Text statusLabel;
     private TMP_Text arenaStatusLabel;
@@ -36,6 +40,14 @@ public sealed class CombatHudController : MonoBehaviour
     private TMP_Text opponentNameLabel;
     private TMP_Text opponentHealthLabel;
     private Image opponentHealthFill;
+    private GameObject towerPanel;
+    private TMP_Text towerTitle;
+    private TMP_Text towerSubtitle;
+    private TMP_Text towerProgress;
+    private readonly RawImage[] towerPortraits = new RawImage[5];
+    private readonly Image[] towerPortraitFrames = new Image[5];
+    private Button towerPrimaryButton;
+    private TMP_Text towerPrimaryLabel;
     private GameObject blindOverlay;
     private AbilityOverlay basicOverlay;
     private AbilityOverlay ultimateOverlay;
@@ -60,8 +72,16 @@ public sealed class CombatHudController : MonoBehaviour
         public TMP_Text CaptionLabel;
         public TMP_Text AbilityNameLabel;
         public TMP_Text CooldownLabel;
+        public RawImage Icon;
         public float Duration;
         public string Key;
+    }
+
+    private sealed class StatusBar
+    {
+        public GameObject Root;
+        public Image Fill;
+        public TMP_Text Label;
     }
 
     public static CombatHudController EnsureFor(PlayerController owner)
@@ -131,16 +151,18 @@ public sealed class CombatHudController : MonoBehaviour
         AddHealthFrame(healthTrack);
         nameLabel.transform.SetAsLastSibling();
 
+        BuildStatusBars(root);
+
         teamLabel = CreateText(root, "Team", string.Empty, 22, Ivory, FontStyles.Bold);
-        Anchor(teamLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -150f), new Vector2(680f, 32f));
+        Anchor(teamLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -230f), new Vector2(680f, 32f));
 
         statusLabel = CreateText(root, "Network status", string.Empty, 22, Ivory, FontStyles.Normal);
-        Anchor(statusLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -188f), new Vector2(760f, 64f));
+        Anchor(statusLabel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -266f), new Vector2(760f, 64f));
 
         arenaStatusLabel = CreateText(root, "Arena status", string.Empty, 26,
             new Color(0.92f, 0.42f, 0.48f), FontStyles.Bold);
         Anchor(arenaStatusLabel.rectTransform, new Vector2(0.5f, 1f),
-            new Vector2(0f, -252f), new Vector2(820f, 42f));
+            new Vector2(0f, -330f), new Vector2(820f, 42f));
 
         budIndicator = CreatePanel(root, "Corrupted bud pointer", Vector2.zero,
             new Vector2(330f, 68f), TextAnchor.MiddleCenter, MenuTheme.WithAlpha(MenuTheme.HudAshDark, 0.92f));
@@ -161,6 +183,7 @@ public sealed class CombatHudController : MonoBehaviour
         BuildConfirmation(root);
         BuildResult(root);
         BuildTrainingControls(root);
+        BuildTrainingTower(root);
         usesTouchControls = Application.isMobilePlatform ||
                             (Input.touchSupported && SystemInfo.deviceType == DeviceType.Handheld);
         BuildTargetLock(root);
@@ -197,6 +220,37 @@ public sealed class CombatHudController : MonoBehaviour
             new Vector2(135f, 26f), new Vector2(240f, 54f), TextAnchor.LowerCenter);
         leave.onClick.AddListener(player.ConfirmExit);
         confirmationPanel.SetActive(false);
+    }
+
+    private void BuildStatusBars(RectTransform root)
+    {
+        RectTransform row = CreatePanel(root, "Active blessings", new Vector2(0f, -164f),
+            new Vector2(720f, 58f), TextAnchor.UpperCenter, Color.clear);
+        buffRow = row.gameObject;
+        hasteBar = CreateStatusBar(row, "Haste", -240f, new Color(0.24f, 0.58f, 0.96f, 1f));
+        powerBar = CreateStatusBar(row, "Power", 0f, new Color(0.96f, 0.62f, 0.16f, 1f));
+        shieldBar = CreateStatusBar(row, "Shield", 240f, new Color(0.62f, 0.30f, 0.82f, 1f));
+        buffRow.SetActive(false);
+    }
+
+    private StatusBar CreateStatusBar(Transform parent, string name, float x, Color color)
+    {
+        RectTransform track = CreatePanel(parent, name, new Vector2(x, 0f), new Vector2(218f, 50f),
+            TextAnchor.MiddleCenter, new Color(0.025f, 0.02f, 0.03f, 0.94f));
+        CreateBorder(track);
+        Image fill = CreateImage(track, "Duration", color);
+        fill.rectTransform.anchorMin = Vector2.zero;
+        fill.rectTransform.anchorMax = Vector2.one;
+        fill.rectTransform.pivot = new Vector2(0f, 0.5f);
+        fill.rectTransform.offsetMin = new Vector2(4f, 4f);
+        fill.rectTransform.offsetMax = new Vector2(-4f, -4f);
+        fill.color = new Color(color.r, color.g, color.b, 0.56f);
+        TMP_Text label = CreateText(track, "Label", string.Empty, 22, Ivory, FontStyles.Bold);
+        Stretch(label.rectTransform);
+        ConfigureEssentialLabel(label, 22f);
+        label.outlineWidth = 0.16f;
+        label.outlineColor = new Color32(8, 6, 10, 255);
+        return new StatusBar { Root = track.gameObject, Fill = fill, Label = label };
     }
 
     private void BuildResult(RectTransform root)
@@ -258,6 +312,64 @@ public sealed class CombatHudController : MonoBehaviour
             22, Ivory, FontStyles.Normal);
         Anchor(trainingLabel.rectTransform, new Vector2(1f, 1f), new Vector2(-26f, -156f), new Vector2(430f, 34f));
 #endif
+    }
+
+    private void BuildTrainingTower(RectTransform root)
+    {
+        if (training == null || training.Run == null) return;
+
+        Image dimmer = CreateImage(root, "Training tower backdrop", new Color(0.01f, 0.008f, 0.015f, 0.74f));
+        Stretch(dimmer.rectTransform);
+        dimmer.raycastTarget = true;
+        towerPanel = dimmer.gameObject;
+
+        RectTransform panel = CreatePanel(dimmer.transform, "Blight ladder", Vector2.zero,
+            new Vector2(980f, 570f), TextAnchor.MiddleCenter, MenuTheme.WithAlpha(MenuTheme.HudPanel, 0.98f));
+        ApplyModalFrame(panel);
+
+        towerTitle = CreateText(panel, "Tower title", string.Empty, 52, Gold, FontStyles.Bold);
+        Anchor(towerTitle.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -72f), new Vector2(850f, 70f));
+        towerSubtitle = CreateText(panel, "Tower rival", string.Empty, 34, Ivory, FontStyles.Bold);
+        Anchor(towerSubtitle.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -160f), new Vector2(850f, 100f));
+
+        RectTransform portraits = CreatePanel(panel, "Tower rivals", new Vector2(0f, 18f),
+            new Vector2(780f, 150f), TextAnchor.MiddleCenter, Color.clear);
+        for (int i = 0; i < towerPortraits.Length; i++)
+        {
+            RectTransform portraitFrame = CreatePanel(portraits, $"Rival portrait {i + 1}",
+                new Vector2(-304f + i * 152f, 0f), new Vector2(126f, 138f), TextAnchor.MiddleCenter,
+                new Color(0.025f, 0.018f, 0.03f, 0.94f));
+            CreateBorder(portraitFrame);
+            towerPortraitFrames[i] = portraitFrame.GetComponent<Image>();
+            towerPortraits[i] = CreateRawImage(portraitFrame, "Portrait", Color.white);
+            Stretch(towerPortraits[i].rectTransform);
+            towerPortraits[i].rectTransform.offsetMin = new Vector2(7f, 7f);
+            towerPortraits[i].rectTransform.offsetMax = new Vector2(-7f, -7f);
+        }
+        towerProgress = CreateText(panel, "Tower progress", string.Empty, 25, MenuTheme.BoneDim, FontStyles.Normal);
+        Anchor(towerProgress.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -118f), new Vector2(860f, 120f));
+
+        towerPrimaryButton = CreateButton(panel, "Tower primary", string.Empty,
+            new Vector2(0f, 62f), new Vector2(380f, 78f), TextAnchor.LowerCenter);
+        towerPrimaryLabel = towerPrimaryButton.GetComponentInChildren<TMP_Text>();
+        towerPrimaryButton.onClick.AddListener(HandleTowerPrimary);
+        Button exit = CreateButton(panel, "Tower exit", GameLocalization.Choose("SALIR AL MENÚ", "EXIT TO MENU"),
+            new Vector2(0f, 150f), new Vector2(330f, 62f), TextAnchor.LowerCenter);
+        exit.onClick.AddListener(player.ExitToMenu);
+        towerPanel.transform.SetAsLastSibling();
+    }
+
+    private void HandleTowerPrimary()
+    {
+        TrainingRunController run = training != null ? training.Run : null;
+        if (run == null) return;
+        if (run.Phase == TrainingRunPhase.RoundLost) run.RetryCurrent();
+        else if (run.Phase == TrainingRunPhase.Complete)
+        {
+            run.RestartRun();
+            run.BeginOrContinue();
+        }
+        else run.BeginOrContinue();
     }
 
     private void BuildTargetLock(RectTransform root)
@@ -326,6 +438,12 @@ public sealed class CombatHudController : MonoBehaviour
             background.preserveAspect = true;
         }
 
+        RawImage icon = CreateRawImage(face, "Ability icon", Color.white);
+        Stretch(icon.rectTransform);
+        icon.rectTransform.offsetMin = new Vector2(32f, 32f);
+        icon.rectTransform.offsetMax = new Vector2(-32f, -32f);
+        icon.raycastTarget = false;
+
         Image fill = CreateImage(face, "Cooldown fill", new Color(0.015f, 0.012f, 0.02f, 0.76f));
         Stretch(fill.rectTransform);
         fill.rectTransform.offsetMin = new Vector2(22f, 22f);
@@ -370,13 +488,14 @@ public sealed class CombatHudController : MonoBehaviour
         abilityName.overflowMode = TextOverflowModes.Overflow;
         abilityName.outlineWidth = 0.12f;
         abilityName.outlineColor = new Color32(8, 6, 10, 255);
-        fill.transform.SetAsFirstSibling();
+        icon.transform.SetAsFirstSibling();
+        fill.transform.SetAsLastSibling();
         keyLabel.transform.SetAsLastSibling();
         caption.transform.SetAsLastSibling();
         cooldown.transform.SetAsLastSibling();
         return new AbilityOverlay { Root = panel.gameObject, Fill = fill, KeyLabel = keyLabel,
             CaptionLabel = caption, AbilityNameLabel = abilityName, CooldownLabel = cooldown,
-            Key = key, Duration = 1f };
+            Icon = icon, Key = key, Duration = 1f };
     }
 
     private void BindAbilityOverlays()
@@ -412,6 +531,12 @@ public sealed class CombatHudController : MonoBehaviour
             Stretch(decoration.rectTransform);
         }
 
+        RawImage icon = CreateRawImage(rect, "Ability icon", Color.white);
+        Stretch(icon.rectTransform);
+        icon.rectTransform.offsetMin = new Vector2(24f, 24f);
+        icon.rectTransform.offsetMax = new Vector2(-24f, -24f);
+        icon.raycastTarget = false;
+
         Image fill = CreateImage(rect, "Cooldown fill", new Color(0.04f, 0.025f, 0.05f, 0.72f));
         Stretch(fill.rectTransform);
         fill.rectTransform.offsetMin = new Vector2(18f, 18f);
@@ -432,13 +557,14 @@ public sealed class CombatHudController : MonoBehaviour
         TMP_Text caption = CreateText(rect, "Ability type", string.Empty, 19, Gold, FontStyles.Bold);
         Anchor(caption.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, -4f), new Vector2(128f, 28f));
         caption.margin = Vector4.zero;
-        fill.transform.SetAsFirstSibling();
+        icon.transform.SetAsFirstSibling();
+        fill.transform.SetAsLastSibling();
         keyLabel.transform.SetAsLastSibling();
         cooldown.transform.SetAsLastSibling();
         caption.transform.SetAsLastSibling();
 
         return new AbilityOverlay { Root = root, Fill = fill, KeyLabel = keyLabel,
-            CaptionLabel = caption, CooldownLabel = cooldown, Duration = duration, Key = key };
+            CaptionLabel = caption, CooldownLabel = cooldown, Icon = icon, Duration = duration, Key = key };
     }
 
     private void Update()
@@ -461,11 +587,12 @@ public sealed class CombatHudController : MonoBehaviour
         // una barra verde anónima ni una segunda línea frágil en resoluciones bajas.
         nameLabel.gameObject.SetActive(true);
         nameLabel.transform.SetAsLastSibling();
-        float health = Mathf.Clamp01(player.CurrentHealth / (float)PlayerController.MaxHealth);
+        float health = Mathf.Clamp01(player.CurrentHealth / (float)Mathf.Max(1, player.HealthMaximum));
         healthLabel.text = string.Empty;
         healthLabel.gameObject.SetActive(false);
         healthFill.rectTransform.anchorMax = new Vector2(health, 1f);
         healthFill.color = health > 0.35f ? new Color(0.27f, 0.72f, 0.39f) : new Color(0.78f, 0.22f, 0.22f);
+        UpdateStatusBars();
 
         string combatStatus = player.CombatStatusText;
         teamLabel.text = string.IsNullOrWhiteSpace(combatStatus)
@@ -481,26 +608,34 @@ public sealed class CombatHudController : MonoBehaviour
         arenaStatusLabel.gameObject.SetActive(!string.IsNullOrWhiteSpace(arenaStatus));
         UpdateBudIndicator();
 
-        UpdateAbility(basicOverlay, player.BasicCooldownRemaining, player.BasicCooldownDuration, player.BasicAbilityName);
-        UpdateAbility(ultimateOverlay, player.UltimateCooldownRemaining, player.UltimateCooldownDuration, player.UltimateAbilityName);
+        UpdateAbility(basicOverlay, player.BasicCooldownRemaining, player.BasicCooldownDuration,
+            player.BasicAbilityName, player.BasicAbilityIcon);
+        UpdateAbility(ultimateOverlay, player.UltimateCooldownRemaining, player.UltimateCooldownDuration,
+            player.UltimateAbilityName, player.UltimateAbilityIcon);
 
         confirmationWarning.text = player.ExitWarningText;
         confirmationPanel.SetActive(player.ExitConfirmationVisible);
 
         string result = player.MatchResultText;
-        bool resultVisible = !string.IsNullOrEmpty(result);
+        TrainingRunController run = training != null ? training.Run : null;
+        bool towerVisible = run != null && run.OverlayVisible;
+        bool resultVisible = run == null && !string.IsNullOrEmpty(result);
         resultPanel.SetActive(resultVisible);
         if (resultVisible) resultPanel.transform.SetAsLastSibling();
         resultLabel.text = result;
         blindOverlay.SetActive(player.IsBlinded);
 
-        if (resultPresentationSuppressed != resultVisible)
-        {
-            resultPresentationSuppressed = resultVisible;
-            ArenaPowerUpManager.Instance?.SetPresentationSuppressed(resultVisible);
-        }
+        UpdateTower(run, towerVisible);
 
-        UpdateInputHint(resultVisible);
+        bool presentationSuppressed = resultVisible || towerVisible;
+        if (resultPresentationSuppressed != presentationSuppressed)
+            resultPresentationSuppressed = presentationSuppressed;
+        if (run != null)
+            ArenaPowerUpManager.Instance?.SetSimulationPaused(towerVisible);
+        else
+            ArenaPowerUpManager.Instance?.SetPresentationSuppressed(resultVisible);
+
+        UpdateInputHint(presentationSuppressed);
 
         if (lockButtonLabel != null)
         {
@@ -536,12 +671,109 @@ public sealed class CombatHudController : MonoBehaviour
             {
                 opponentNameLabel.text = $"{GameLocalization.Choose("RIVAL", "RIVAL")} · " +
                     CharacterCatalog.NameOf(opponent.SelectedCharacterIndex).ToUpperInvariant();
-                float opponentHealth = Mathf.Clamp01(opponent.CurrentHealth / (float)PlayerController.MaxHealth);
+                float opponentHealth = Mathf.Clamp01(opponent.CurrentHealth / (float)Mathf.Max(1, opponent.HealthMaximum));
                 opponentHealthLabel.text = string.Empty;
                 opponentHealthLabel.gameObject.SetActive(false);
                 opponentHealthFill.rectTransform.anchorMax = new Vector2(opponentHealth, 1f);
             }
         }
+    }
+
+    private void UpdateStatusBars()
+    {
+        if (buffRow == null) return;
+        float haste = player.PickupHasteRemaining;
+        float power = player.PickupPowerRemaining;
+        int shield = player.CurrentShield;
+        UpdateStatusBar(hasteBar, haste > 0f, haste / player.PickupHasteDuration,
+            GameLocalization.Choose($"CELERIDAD · {haste:0.0}s", $"HASTE · {haste:0.0}s"));
+        UpdateStatusBar(powerBar, power > 0f, power / player.PickupPowerDuration,
+            GameLocalization.Choose($"PODER · {power:0.0}s", $"POWER · {power:0.0}s"));
+        UpdateStatusBar(shieldBar, shield > 0, shield / (float)Mathf.Max(1, player.HealthMaximum),
+            GameLocalization.Choose($"BARRERA · {shield}", $"SHIELD · {shield}"));
+        buffRow.SetActive(haste > 0f || power > 0f || shield > 0);
+    }
+
+    private static void UpdateStatusBar(StatusBar bar, bool visible, float ratio, string label)
+    {
+        if (bar?.Root == null) return;
+        bar.Root.SetActive(visible);
+        if (!visible) return;
+        bar.Fill.rectTransform.anchorMax = new Vector2(Mathf.Clamp01(ratio), 1f);
+        bar.Label.text = label;
+    }
+
+    private void UpdateTower(TrainingRunController run, bool visible)
+    {
+        if (towerPanel == null) return;
+        towerPanel.SetActive(visible);
+        if (!visible || run == null) return;
+        towerPanel.transform.SetAsLastSibling();
+
+        int shownRival = run.Phase == TrainingRunPhase.RoundWon && run.NextOpponentIndex >= 0
+            ? run.NextOpponentIndex
+            : run.CurrentOpponentIndex;
+        string rivalName = shownRival >= 0 ? CharacterCatalog.NameOf(shownRival).ToUpperInvariant() : string.Empty;
+        int shownNumber = run.Phase == TrainingRunPhase.RoundWon
+            ? Mathf.Min(run.TotalRivals, run.CurrentRivalNumber + 1)
+            : run.CurrentRivalNumber;
+
+        switch (run.Phase)
+        {
+            case TrainingRunPhase.Preview:
+                towerTitle.text = GameLocalization.Choose("ESCALERA DE LA PODREDUMBRE", "BLIGHT LADDER");
+                towerSubtitle.text = GameLocalization.Choose(
+                    $"RIVAL {shownNumber} DE {run.TotalRivals} · {rivalName}",
+                    $"RIVAL {shownNumber} OF {run.TotalRivals} · {rivalName}");
+                towerPrimaryLabel.text = GameLocalization.Choose("COMENZAR", "BEGIN");
+                break;
+            case TrainingRunPhase.RoundWon:
+                towerTitle.text = GameLocalization.Choose("VICTORIA", "VICTORY");
+                towerSubtitle.text = GameLocalization.Choose(
+                    $"SIGUIENTE: {rivalName} · RIVAL {shownNumber} DE {run.TotalRivals}",
+                    $"NEXT: {rivalName} · RIVAL {shownNumber} OF {run.TotalRivals}");
+                towerPrimaryLabel.text = GameLocalization.Choose("CONTINUAR", "CONTINUE");
+                break;
+            case TrainingRunPhase.RoundLost:
+                towerTitle.text = GameLocalization.Choose("DERROTA", "DEFEAT");
+                towerSubtitle.text = GameLocalization.Choose(
+                    $"REINTENTA EL RIVAL {shownNumber}: {rivalName}",
+                    $"RETRY RIVAL {shownNumber}: {rivalName}");
+                towerPrimaryLabel.text = GameLocalization.Choose("REINTENTAR", "RETRY");
+                break;
+            default:
+                towerTitle.text = GameLocalization.Choose("TORRE SUPERADA", "LADDER COMPLETE");
+                towerSubtitle.text = GameLocalization.Choose(
+                    "VENCISTE A LOS CINCO GUARDIANES", "YOU DEFEATED ALL FIVE GUARDIANS");
+                towerPrimaryLabel.text = GameLocalization.Choose("REPETIR TORRE", "REPLAY LADDER");
+                break;
+        }
+
+        System.Text.StringBuilder progress = new System.Text.StringBuilder();
+        for (int i = 0; i < run.OpponentOrder.Count; i++)
+        {
+            bool defeatedCurrent = run.Phase == TrainingRunPhase.RoundWon && i == run.CurrentIndex;
+            bool defeated = i < run.CurrentIndex || defeatedCurrent || run.Phase == TrainingRunPhase.Complete;
+            string state = defeated
+                ? GameLocalization.Choose("DERROTADO", "DEFEATED")
+                : i == run.CurrentIndex ? GameLocalization.Choose("RIVAL ACTUAL", "CURRENT RIVAL") : "—";
+            if (i < towerPortraits.Length)
+            {
+                towerPortraits[i].texture = CharacterCatalog.LoadPortrait(run.OpponentOrder[i]);
+                towerPortraits[i].color = defeated
+                    ? new Color(0.34f, 0.30f, 0.34f, 0.58f)
+                    : Color.white;
+                if (towerPortraitFrames[i] != null)
+                    towerPortraitFrames[i].color = i == run.CurrentIndex && !defeated
+                        ? new Color(0.34f, 0.22f, 0.08f, 0.98f)
+                        : new Color(0.025f, 0.018f, 0.03f, 0.94f);
+            }
+            progress.Append(i + 1).Append(" · ")
+                .Append(CharacterCatalog.NameOf(run.OpponentOrder[i]).ToUpperInvariant())
+                .Append("   ").Append(state);
+            if (i < run.OpponentOrder.Count - 1) progress.AppendLine();
+        }
+        towerProgress.text = progress.ToString();
     }
 
     private void UpdateInputHint(bool resultVisible)
@@ -594,7 +826,8 @@ public sealed class CombatHudController : MonoBehaviour
             $"{arrow}CAPULLO · {hits} GOLPES", $"{arrow}BUD · {hits} HITS");
     }
 
-    private static void UpdateAbility(AbilityOverlay overlay, float remaining, float duration, string abilityName)
+    private static void UpdateAbility(AbilityOverlay overlay, float remaining, float duration,
+        string abilityName, Texture2D icon)
     {
         if (overlay == null) return;
         overlay.Duration = Mathf.Max(0.05f, duration);
@@ -606,6 +839,11 @@ public sealed class CombatHudController : MonoBehaviour
         overlay.CaptionLabel.text = caption;
         if (overlay.AbilityNameLabel != null)
             overlay.AbilityNameLabel.text = string.IsNullOrWhiteSpace(abilityName) ? string.Empty : abilityName.ToUpperInvariant();
+        if (overlay.Icon != null)
+        {
+            overlay.Icon.texture = icon;
+            overlay.Icon.gameObject.SetActive(icon != null);
+        }
         overlay.CooldownLabel.text = remaining > 0f ? $"{remaining:0.0}s" : string.Empty;
     }
 
@@ -768,6 +1006,15 @@ public sealed class CombatHudController : MonoBehaviour
         GameObject go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         go.transform.SetParent(parent, false);
         Image image = go.GetComponent<Image>();
+        image.color = color;
+        return image;
+    }
+
+    private static RawImage CreateRawImage(Transform parent, string name, Color color)
+    {
+        GameObject go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
+        go.transform.SetParent(parent, false);
+        RawImage image = go.GetComponent<RawImage>();
         image.color = color;
         return image;
     }

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   characterName: Quietmor
   prefabPath: Characters/Quietmor
-  portraitPath:
+  portraitPath: UI/Portraits/QuietmorPortrait
   animatorControllerPath: Characters/Quietmor
   sortOrder: 3
   tint: {r: 0.34, g: 0.25, b: 0.48, a: 1}

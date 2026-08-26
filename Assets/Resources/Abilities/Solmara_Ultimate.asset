@@ -30,4 +30,5 @@ MonoBehaviour:
   alliedEffectDuration: 0
   alliedEffectStrength: 0
   vfxColor: {r: 0.95, g: 0.42, b: 0.12, a: 1}
+  iconResourcePath: UI/HUD/Abilities/Solmara_Ultimate
   castSfx: {fileID: 8300000, guid: 37e4299c11fc8114eaf0a6ae7bd78931, type: 3}

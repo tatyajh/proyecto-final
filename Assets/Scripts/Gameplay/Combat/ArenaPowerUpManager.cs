@@ -3,6 +3,7 @@ using Gameplay.Combat;
 using TMPro;
 using UnityEngine;
 using UnityEngine.AI;
+using BlightedBlossoms.Gameplay.Vfx;
 
 public enum ArenaPickupType
 {
@@ -53,6 +54,7 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
         public LineRenderer Beacon;
         public Transform Symbol;
         public SpriteRenderer SymbolRenderer;
+        public GameObject FallbackSymbol;
         public TextMeshPro PickupLabel;
         public LineRenderer Ring;
         public bool WasPickupActive;
@@ -73,6 +75,8 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
     private int localTypes;
     private int localGeneration;
     private float nextLocalSpawnAt;
+    private bool simulationPaused;
+    private float simulationPausedAt;
     private float localRoundStartedAt;
     private int requestedGeneration = -1;
     private int requestedPedestal = -1;
@@ -144,6 +148,8 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
         CorruptionProgress = 0f;
         requestedGeneration = -1;
         requestedPedestal = -1;
+        simulationPaused = false;
+        simulationPausedAt = 0f;
         BuildVisuals();
         RefreshVisualTransforms();
     }
@@ -152,6 +158,14 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
     {
         if (owner == null || !owner.HasLocalControl) return;
         BuildVisuals();
+
+        if (simulationPaused)
+        {
+            RefreshVisualState();
+            AnimatePowerUpSymbols();
+            UpdateCorruptionRing();
+            return;
+        }
 
         if (owner.IsOnlinePlayer) UpdateOnline();
         else UpdateTraining();
@@ -296,7 +310,7 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
     public void TryStrikeBud(AbilityDefinition ability, Vector3 origin, Vector3 direction,
         float travel, Vector3 areaCenter, int attackerPlayerId)
     {
-        if (ability == null || CorruptionActive) return;
+        if (ability == null || CorruptionActive || simulationPaused) return;
         int budMask = CurrentBudMask;
         if (budMask == 0) return;
 
@@ -414,12 +428,12 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             bulb.transform.SetParent(bud.transform, false);
             bulb.transform.localScale = new Vector3(1.25f, 1.55f, 1.25f);
             collider = bulb.GetComponent<Collider>();
-            if (collider != null) Destroy(collider);
             Renderer budRenderer = bulb.GetComponent<Renderer>();
             SetMaterial(budRenderer, new Color(0.48f, 0.025f, 0.12f, 1f));
-            SphereCollider budCollider = bulb.GetComponent<SphereCollider>();
+            SphereCollider budCollider = collider as SphereCollider;
+            if (budCollider == null) budCollider = bulb.AddComponent<SphereCollider>();
             budCollider.isTrigger = true;
-            budCollider.radius = 0.72f;
+            budCollider.radius = 0.88f;
             ArenaBudTarget budTarget = bulb.AddComponent<ArenaBudTarget>();
             budTarget.Configure(this, i, budRenderer);
 
@@ -471,9 +485,18 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             symbol.transform.localPosition = Vector3.up * 1.18f;
             SpriteRenderer symbolRenderer = symbol.AddComponent<SpriteRenderer>();
             symbolRenderer.color = Color.white;
-            symbolRenderer.sortingOrder = 4;
+            symbolRenderer.sortingOrder = 60;
             symbolRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             symbolRenderer.receiveShadows = false;
+
+            GameObject fallbackSymbol = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            fallbackSymbol.name = "Respaldo visible del beneficio";
+            fallbackSymbol.transform.SetParent(root.transform, false);
+            fallbackSymbol.transform.localPosition = Vector3.up * 2.72f;
+            fallbackSymbol.transform.localScale = Vector3.one * 0.82f;
+            Collider fallbackCollider = fallbackSymbol.GetComponent<Collider>();
+            if (fallbackCollider != null) Destroy(fallbackCollider);
+            fallbackSymbol.SetActive(false);
 
             GameObject pickupLabelObject = new GameObject("Nombre del beneficio", typeof(TextMeshPro));
             pickupLabelObject.transform.SetParent(root.transform, false);
@@ -511,6 +534,7 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
                 Beacon = beacon,
                 Symbol = symbol.transform,
                 SymbolRenderer = symbolRenderer,
+                FallbackSymbol = fallbackSymbol,
                 PickupLabel = pickupLabel,
                 Ring = ring
             };
@@ -540,6 +564,7 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             // arena. Solo el símbolo botánico y su halo desaparecen al recargar.
             visual.Root.SetActive(true);
             if (visual.Symbol != null) visual.Symbol.gameObject.SetActive(active);
+            if (visual.FallbackSymbol != null) visual.FallbackSymbol.SetActive(false);
             if (visual.PickupLabel != null) visual.PickupLabel.gameObject.SetActive(active);
             if (visual.Bud != null) visual.Bud.SetActive(budActive);
             if (visual.BudLabel != null) visual.BudLabel.gameObject.SetActive(budActive);
@@ -571,16 +596,25 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             {
                 visual.WasPickupActive = true;
                 visual.RevealStartedAt = Time.unscaledTime;
+                ArenaPickupType revealType = CurrentTypeAt(i);
+                PowerVfxUtility.SpawnBurst(visual.Root.transform.position + Vector3.up * 2f,
+                    PickupColors[(int)revealType], 42, 0.8f, 1.15f);
             }
 
             ArenaPickupType type = CurrentTypeAt(i);
             int typeIndex = (int)type;
+            Color color = PickupColors[typeIndex];
             Sprite sprite = GetPickupSprite(typeIndex);
             if (visual.SymbolRenderer != null && visual.SymbolRenderer.sprite != sprite)
             {
                 visual.SymbolRenderer.sprite = sprite;
                 visual.Symbol.name = PickupNames[typeIndex];
-                FitSymbolToHeight(visual.Symbol, sprite, 3.05f);
+                FitSymbolToHeight(visual.Symbol, sprite, 4.05f);
+            }
+            if (visual.FallbackSymbol != null)
+            {
+                visual.FallbackSymbol.SetActive(sprite == null);
+                if (sprite == null) SetMaterial(visual.FallbackSymbol.GetComponent<Renderer>(), color);
             }
 
             if (visual.PickupLabel != null)
@@ -588,7 +622,6 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
                     $"{PickupNames[typeIndex].ToUpperInvariant()}\nACÉRCATE PARA RECOGER",
                     $"{PickupNames[typeIndex].ToUpperInvariant()}\nMOVE CLOSER TO COLLECT");
 
-            Color color = PickupColors[typeIndex];
             visual.Ring.startColor = color;
             visual.Ring.endColor = color;
             if (visual.Ring.sharedMaterial == null)
@@ -618,6 +651,12 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
                     visual.Symbol.rotation = camera.transform.rotation;
                 if (camera != null && visual.PickupLabel != null)
                     visual.PickupLabel.transform.rotation = camera.transform.rotation;
+            }
+            if (visual.FallbackSymbol != null && visual.FallbackSymbol.activeSelf)
+            {
+                visual.FallbackSymbol.transform.localPosition = Vector3.up *
+                    (2.72f + Mathf.Sin(time * 2.2f + i) * 0.14f);
+                visual.FallbackSymbol.transform.Rotate(Vector3.up, 80f * Time.unscaledDeltaTime, Space.World);
             }
 
             if (visual.Bud != null && visual.Bud.activeSelf)
@@ -689,12 +728,52 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             corruptionRing.gameObject.SetActive(CorruptionActive && !presentationSuppressed);
     }
 
+    /// <summary>
+    /// Congela por completo los sistemas locales durante cartas de rival y
+    /// resultados. Al continuar se desplazan los relojes para que no aparezca
+    /// un capullo o la Corrupción como si el modal hubiera sido tiempo jugado.
+    /// </summary>
+    public void SetSimulationPaused(bool value)
+    {
+        if (owner != null && owner.IsOnlinePlayer)
+        {
+            SetPresentationSuppressed(value);
+            return;
+        }
+        if (simulationPaused == value) return;
+        if (value)
+        {
+            simulationPaused = true;
+            simulationPausedAt = Time.unscaledTime;
+            SetPresentationSuppressed(true);
+            return;
+        }
+
+        float pausedFor = simulationPausedAt > 0f
+            ? Mathf.Max(0f, Time.unscaledTime - simulationPausedAt)
+            : 0f;
+        localRoundStartedAt += pausedFor;
+        if (!float.IsPositiveInfinity(nextLocalSpawnAt)) nextLocalSpawnAt += pausedFor;
+        if (corruptionDamageAt.Count > 0)
+        {
+            PlayerController[] keys = new PlayerController[corruptionDamageAt.Count];
+            corruptionDamageAt.Keys.CopyTo(keys, 0);
+            foreach (PlayerController key in keys) corruptionDamageAt[key] += pausedFor;
+        }
+        simulationPaused = false;
+        simulationPausedAt = 0f;
+        SetPresentationSuppressed(false);
+    }
+
     public void NotifyPickupGranted(ArenaPickupType type)
     {
         int index = Mathf.Clamp((int)type, 0, PickupNames.Length - 1);
         pickupToast = GameLocalization.Choose($"OBTUVISTE: {PickupNames[index].ToUpperInvariant()}",
             $"PICKED UP: {PickupNames[index].ToUpperInvariant()}");
         pickupToastUntil = Time.unscaledTime + 3.5f;
+        if (owner != null)
+            PowerVfxUtility.SpawnBurst(owner.transform.position + Vector3.up * 1.8f,
+                PickupColors[index], 54, 0.6f, 1.25f);
     }
 
     public static Vector3 PedestalPosition(Vector3 center, int index)

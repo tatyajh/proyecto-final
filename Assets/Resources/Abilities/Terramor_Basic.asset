@@ -30,4 +30,5 @@ MonoBehaviour:
   alliedEffectDuration: 0
   alliedEffectStrength: 0
   vfxColor: {r: 0.62, g: 0.38, b: 0.2, a: 1}
+  iconResourcePath: UI/HUD/Abilities/Terramor_Basic
   castSfx: {fileID: 8300000, guid: 90eab5e6285d6fe4b8193580baa929f4, type: 3}

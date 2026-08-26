@@ -30,4 +30,5 @@ MonoBehaviour:
   alliedEffectDuration: 0
   alliedEffectStrength: 0
   vfxColor: {r: 0.93, g: 0.88, b: 0.62, a: 1}
+  iconResourcePath: UI/HUD/Abilities/Heliandra_Basic
   castSfx: {fileID: 8300000, guid: 7c7bd79eb33e5f045b45bc50a09e7393, type: 3}

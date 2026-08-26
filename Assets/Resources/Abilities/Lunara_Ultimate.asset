@@ -30,4 +30,5 @@ MonoBehaviour:
   alliedEffectDuration: 0
   alliedEffectStrength: 0
   vfxColor: {r: 0.34, g: 0.12, b: 0.82, a: 1}
+  iconResourcePath: UI/HUD/Abilities/Lunara_Ultimate
   castSfx: {fileID: 8300000, guid: 70aacac11732b4242ab45e1a304de44c, type: 3}
