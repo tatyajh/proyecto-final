@@ -702,8 +702,11 @@ public class PlayerController : NetworkBehaviour
     private IEnumerator ResolveAbilityAfterDelay(AbilityDefinition ability, Vector3 direction, float travel,
         int sourcePlayer, int sequence)
     {
-        if (ability.castDelay > 0f)
-            yield return new WaitForSeconds(ability.castDelay);
+        // La resolución espera a que el telegráfico y el proyectil frontal
+        // sean legibles. Antes el daño ocurría en el mismo frame y el VFX
+        // aparecía después, haciendo imposible reaccionar en PvP.
+        float presentationWindup = Mathf.Max(0.42f, ability.castDelay);
+        yield return new WaitForSeconds(presentationWindup);
 
         if (ability.shape is AbilityShape.Leap or AbilityShape.Dash)
             MoveForAbility(direction, travel);
@@ -725,7 +728,8 @@ public class PlayerController : NetworkBehaviour
             else TemporaryAbilityWall.Spawn(areaCenter, direction, ability.radius, 4f, ability.vfxColor);
         }
 
-        ArenaPowerUpManager.Instance?.TryStrikeBud(ability, transform.position, direction,
+        Vector3 castOrigin = ResolveCastOrigin(direction, GetSelectedCharacterIndex());
+        ArenaPowerUpManager.Instance?.TryStrikeBud(ability, castOrigin, direction,
             travel, areaCenter, sourcePlayer);
 
         HashSet<PlayerController> players = new HashSet<PlayerController>();
@@ -772,7 +776,8 @@ public class PlayerController : NetworkBehaviour
     {
         if (ability.shape is AbilityShape.Line or AbilityShape.Dash)
         {
-            foreach (RaycastHit hit in Physics.SphereCastAll(transform.position + Vector3.up, ability.radius,
+            Vector3 origin = ResolveCastOrigin(direction, GetSelectedCharacterIndex());
+            foreach (RaycastHit hit in Physics.SphereCastAll(origin, ability.radius,
                          direction, travel, Physics.AllLayers, QueryTriggerInteraction.Ignore))
                 AddCombatTarget(hit.collider, players);
             return;
@@ -813,16 +818,19 @@ public class PlayerController : NetworkBehaviour
         float radius, AbilityShape shape)
     {
         bool ultimate = slot == AbilitySlot.Ultimate;
-        TriggerCharacterAnimation(ultimate ? "ultimate" : "attack");
-        ShowAbilityFeedback(direction, travel, radius, shape, ultimate, characterIndex);
-
         AbilityDefinition ability = CharacterCatalog.AbilityOf(characterIndex, slot);
+        string animationTrigger = ability != null && !string.IsNullOrWhiteSpace(ability.castAnimationTrigger)
+            ? ability.castAnimationTrigger
+            : ultimate ? "ultimate" : "attack";
+        TriggerCharacterAnimation(animationTrigger);
+        ShowAbilityFeedback(direction, travel, radius, shape, ultimate, characterIndex, ability);
+
         if (ability != null && ability.castSfx != null)
             AudioCatalog.PlayOneShot(ability.castSfx, transform.position);
     }
 
     private void ShowAbilityFeedback(Vector3 direction, float feedbackRange, float radius,
-        AbilityShape shape, bool ultimate, int characterIndex)
+        AbilityShape shape, bool ultimate, int characterIndex, AbilityDefinition ability)
     {
         GameObject feedback = new GameObject(ultimate ? "UltimateFeedback" : "AttackFeedback");
         LineRenderer line = feedback.AddComponent<LineRenderer>();
@@ -832,8 +840,7 @@ public class PlayerController : NetworkBehaviour
         Material feedbackMaterial = shader != null ? new Material(shader) : null;
         if (feedbackMaterial != null) line.material = feedbackMaterial;
 
-        Color color = CharacterCatalog.AbilityOf(characterIndex,
-            ultimate ? AbilitySlot.Ultimate : AbilitySlot.Basic).vfxColor;
+        Color color = ability != null ? ability.vfxColor : CharacterCatalog.TintOf(characterIndex);
         line.startColor = color;
         line.endColor = new Color(color.r, color.g, color.b, 0.15f);
         // Anchos pensados para la cámara actual: más finos se perdían.
@@ -847,16 +854,33 @@ public class PlayerController : NetworkBehaviour
         // propio modelo lo tapaba. Ahora sale del pecho.
         // El modelo puede crecer para la cámara sin subir el origen del VFX
         // hasta la cara. De otro modo la esfera termina tapando al personaje.
-        Vector3 origin = transform.position + Vector3.up * GameplayPlayerScale;
+        Vector3 origin = ResolveCastOrigin(direction, characterIndex);
         line.SetPosition(0, origin);
         line.SetPosition(1, origin + direction.normalized * feedbackRange);
 
-        CharacterPowerVfx.Play(gameObject, transform.position, direction.normalized, ultimate,
+        CharacterPowerVfx.Play(gameObject, ability, origin, direction.normalized,
             characterIndex, Mathf.Max(feedbackRange, radius));
 
         // 0.2 s eran 12 fotogramas: un parpadeo que se perdía.
         Destroy(feedback, 0.4f);
         if (feedbackMaterial != null) Destroy(feedbackMaterial, 0.45f);
+    }
+
+    /// <summary>
+    /// Punto de salida común para resolución y presentación. La altura usa el
+    /// bounds aprobado de cada personaje, no la escala del Player. Acatheria
+    /// configura un offset negativo: su foco de magia es la flor junto a la
+    /// cola, tal como está diseñado el modelo.
+    /// </summary>
+    public Vector3 ResolveCastOrigin(Vector3 direction, int characterIndex = -1)
+    {
+        int index = characterIndex >= 0 ? CharacterCatalog.Clamp(characterIndex) : GetSelectedCharacterIndex();
+        Vector3 forward = Vector3.ProjectOnPlane(direction, Vector3.up);
+        if (forward.sqrMagnitude < 0.001f) forward = transform.forward;
+        forward.Normalize();
+        float height = Mathf.Max(1.2f, CharacterCatalog.ExpectedGameplayHeightOf(index));
+        return transform.position + Vector3.up * (height * CharacterCatalog.CastOriginHeightOf(index)) +
+               forward * CharacterCatalog.CastForwardOffsetOf(index);
     }
 
     private void ReceiveAbilityImpact(int damage, CombatEffectKind effect, float duration, float strength,
@@ -1234,7 +1258,8 @@ public class PlayerController : NetworkBehaviour
     private void FitImportedCharacterToCollider(GameObject character, float authoredGroundOffset)
     {
         if (character == null) return;
-        character.transform.localRotation = Quaternion.identity;
+        character.transform.localRotation = Quaternion.Euler(0f,
+            CharacterCatalog.GameplayVisualYawOf(prototypeCharacterIndex), 0f);
 
         // Los seis FBX conservan su escala exportada. Solo compensamos la
         // diferencia de pivote para que el punto más bajo del arte coincida
@@ -1453,6 +1478,8 @@ public class PlayerController : NetworkBehaviour
                 else PickupPowerTimer = TickTimer.CreateFromSeconds(Runner, 10f);
                 break;
         }
+        if (HasLocalControl)
+            ArenaPowerUpManager.Instance?.NotifyPickupGranted(type);
     }
 
     private bool ConsumePowerPickup()

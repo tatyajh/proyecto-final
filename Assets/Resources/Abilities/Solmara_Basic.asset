@@ -17,7 +17,7 @@ MonoBehaviour:
   englishName: Withered Sun Ray
   slot: 0
   shape: 0
-  range: 7
+  range: 8.5
   radius: 0.55
   coneAngle: 55
   castDelay: 0

@@ -44,6 +44,15 @@ public sealed class CharacterDefinition : ScriptableObject
     [Tooltip("Compensa pivotes exportados fuera de los pies sin alterar el spawn, la cámara ni los demás personajes.")]
     public Vector3 modelLocalOffset;
 
+    [Tooltip("Rotación visual independiente de la dirección jugable. Corrige FBX cuyo frente exportado no coincide con +Z.")]
+    public float gameplayVisualYaw;
+
+    [Tooltip("Altura normalizada (0=pies, 1=parte superior) desde la que nace el poder.")]
+    [Range(0f, 1.25f)] public float castOriginHeight = 0.55f;
+
+    [Tooltip("Desplazamiento respecto al frente de combate. Puede ser negativo para un foco situado detrás, como la flor de Acatheria.")]
+    public float castForwardOffset = 0.65f;
+
     [Header("Habilidades")]
     [Tooltip("Ataque básico configurable. Si queda vacío se usa la ficha oficial del catálogo.")]
     public AbilityDefinition basicAbility;

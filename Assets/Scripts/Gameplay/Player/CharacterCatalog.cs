@@ -29,12 +29,16 @@ public static class CharacterCatalog
         public readonly float PreviewYaw;
         public readonly Vector3 ModelLocalOffset;
         public readonly float ExpectedGameplayHeight;
+        public readonly float GameplayVisualYaw;
+        public readonly float CastOriginHeight;
+        public readonly float CastForwardOffset;
         public readonly AbilityDefinition BasicAbility;
         public readonly AbilityDefinition UltimateAbility;
 
         public Entry(string name, string prefabPath, string portraitPath, string animatorControllerPath,
             Color tint, float previewScale = 1f, float previewYaw = 180f,
             Vector3 modelLocalOffset = default, float expectedGameplayHeight = 0f,
+            float gameplayVisualYaw = 0f, float castOriginHeight = 0.55f, float castForwardOffset = 0.65f,
             AbilityDefinition basicAbility = null, AbilityDefinition ultimateAbility = null)
         {
             Name = name;
@@ -46,6 +50,9 @@ public static class CharacterCatalog
             PreviewYaw = previewYaw;
             ModelLocalOffset = modelLocalOffset;
             ExpectedGameplayHeight = expectedGameplayHeight;
+            GameplayVisualYaw = gameplayVisualYaw;
+            CastOriginHeight = castOriginHeight;
+            CastForwardOffset = castForwardOffset;
             BasicAbility = basicAbility;
             UltimateAbility = ultimateAbility;
         }
@@ -79,6 +86,9 @@ public static class CharacterCatalog
                     definition.previewYaw,
                     definition.modelLocalOffset,
                     definition.expectedGameplayHeight,
+                    definition.gameplayVisualYaw,
+                    definition.castOriginHeight,
+                    definition.castForwardOffset,
                     definition.basicAbility,
                     definition.ultimateAbility))
                 .ToArray();
@@ -118,6 +128,12 @@ public static class CharacterCatalog
     public static Vector3 ModelLocalOffsetOf(int index) => Entries[Clamp(index)].ModelLocalOffset;
 
     public static float ExpectedGameplayHeightOf(int index) => Entries[Clamp(index)].ExpectedGameplayHeight;
+
+    public static float GameplayVisualYawOf(int index) => Entries[Clamp(index)].GameplayVisualYaw;
+
+    public static float CastOriginHeightOf(int index) => Entries[Clamp(index)].CastOriginHeight;
+
+    public static float CastForwardOffsetOf(int index) => Entries[Clamp(index)].CastForwardOffset;
 
     /// <summary>Prefab del personaje, o null si arte todavía no lo entregó.</summary>
     public static GameObject LoadModel(int index) => Resources.Load<GameObject>(PathOf(index));

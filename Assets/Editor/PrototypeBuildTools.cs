@@ -145,6 +145,7 @@ public static class PrototypeBuildTools
         }
 
         ValidateCharacters(errors);
+        ValidateArenaResources(errors);
         ValidateMultiplayer(errors);
         ValidatePrefabs(errors);
 
@@ -206,6 +207,33 @@ public static class PrototypeBuildTools
                                                        PlayerController.GameplayPlayerScale);
             if (expectedHeight > 0.1f && authoredVerticalOffset > expectedHeight * 0.15f)
                 errors.Add($"{definition.name}: modelLocalOffset.y es demasiado grande y puede dejar el mesh flotando o enterrado.");
+        }
+    }
+
+    private static void ValidateArenaResources(List<string> errors)
+    {
+        if (Resources.Load<Material>("Vfx/Powers/RayUltimate") == null)
+            errors.Add("Falta Resources/Vfx/Powers/RayUltimate: WebGL podría ocultar los VFX por shader stripping.");
+
+        string[] pickupSprites =
+        {
+            "Vfx/Pickups/VitalityBloom",
+            "Vfx/Pickups/HasteSeed",
+            "Vfx/Pickups/PowerSeed"
+        };
+        foreach (string path in pickupSprites)
+            if (Resources.Load<Sprite>(path) == null)
+                errors.Add($"Falta el sprite identificable del beneficio Resources/{path}.");
+
+        for (int character = 0; character < CharacterCatalog.Count; character++)
+        {
+            foreach (AbilitySlot slot in new[] { AbilitySlot.Basic, AbilitySlot.Ultimate })
+            {
+                AbilityDefinition ability = CharacterCatalog.AbilityOf(character, slot);
+                if (ability == null) errors.Add($"{CharacterCatalog.NameOf(character)} no tiene {slot}.");
+                else if (ability.range < 5.5f)
+                    errors.Add($"{CharacterCatalog.NameOf(character)} · {ability.DisplayName}: rango demasiado corto ({ability.range:0.0}).");
+            }
         }
     }
 

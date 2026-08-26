@@ -17,7 +17,7 @@ MonoBehaviour:
   englishName: Thorn Claw
   slot: 0
   shape: 1
-  range: 4.5
+  range: 6
   radius: 0.75
   coneAngle: 55
   castDelay: 0

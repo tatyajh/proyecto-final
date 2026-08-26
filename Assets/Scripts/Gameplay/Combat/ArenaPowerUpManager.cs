@@ -47,12 +47,16 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
         public GameObject Root;
         public GameObject Bud;
         public Renderer BudRenderer;
+        public ArenaBudTarget BudTarget;
         public readonly List<Renderer> BudPetals = new List<Renderer>();
         public TextMeshPro BudLabel;
         public LineRenderer Beacon;
         public Transform Symbol;
         public SpriteRenderer SymbolRenderer;
+        public TextMeshPro PickupLabel;
         public LineRenderer Ring;
+        public bool WasPickupActive;
+        public float RevealStartedAt;
     }
 
     public static ArenaPowerUpManager Instance { get; private set; }
@@ -75,6 +79,8 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
     private bool visualsBuilt;
     private bool presentationSuppressed;
     private LineRenderer corruptionRing;
+    private string pickupToast = string.Empty;
+    private float pickupToastUntil;
 
     public bool CorruptionActive { get; private set; }
     public float CorruptionProgress { get; private set; }
@@ -83,6 +89,8 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
     {
         get
         {
+            if (!string.IsNullOrEmpty(pickupToast) && Time.unscaledTime < pickupToastUntil)
+                return pickupToast;
             if (CorruptionActive)
                 return GameLocalization.Choose($"CORRUPCIÓN · RADIO {SafeRadius:0}",
                     $"CORRUPTION · RADIUS {SafeRadius:0}");
@@ -297,6 +305,7 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             if ((budMask & (1 << i)) == 0) continue;
             Vector3 budPosition = PedestalPosition(arenaCenter, i) + Vector3.up;
             if (!AbilityReachesPoint(ability, origin, direction, travel, areaCenter, budPosition)) continue;
+            visuals[i]?.BudTarget?.FlashHit();
 
             if (owner != null && owner.IsOnlinePlayer)
             {
@@ -328,15 +337,15 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             case AbilityShape.Line:
             case AbilityShape.Dash:
                 Vector3 end = origin + direction * travel;
-                return DistanceToSegment(point, origin, end) <= Mathf.Max(0.9f, ability.radius);
+                return DistanceToSegment(point, origin, end) <= Mathf.Max(1.55f, ability.radius);
             case AbilityShape.Cone:
                 Vector3 delta = point - origin;
-                return delta.magnitude <= ability.range + 0.8f &&
-                       Vector3.Angle(direction, delta.normalized) <= 42f;
+                return delta.magnitude <= ability.range + 1.35f &&
+                       Vector3.Angle(direction, delta.normalized) <= ability.coneAngle * 0.5f + 8f;
             case AbilityShape.Area:
             case AbilityShape.Leap:
             case AbilityShape.Wall:
-                return Vector3.Distance(point, areaCenter) <= Mathf.Max(1.2f, ability.radius);
+                return Vector3.Distance(point, areaCenter) <= Mathf.Max(1.75f, ability.radius);
             default:
                 return false;
         }
@@ -408,6 +417,11 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             if (collider != null) Destroy(collider);
             Renderer budRenderer = bulb.GetComponent<Renderer>();
             SetMaterial(budRenderer, new Color(0.48f, 0.025f, 0.12f, 1f));
+            SphereCollider budCollider = bulb.GetComponent<SphereCollider>();
+            budCollider.isTrigger = true;
+            budCollider.radius = 0.72f;
+            ArenaBudTarget budTarget = bulb.AddComponent<ArenaBudTarget>();
+            budTarget.Configure(this, i, budRenderer);
 
             List<Renderer> petals = new List<Renderer>();
             for (int petalIndex = 0; petalIndex < 6; petalIndex++)
@@ -461,6 +475,17 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             symbolRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             symbolRenderer.receiveShadows = false;
 
+            GameObject pickupLabelObject = new GameObject("Nombre del beneficio", typeof(TextMeshPro));
+            pickupLabelObject.transform.SetParent(root.transform, false);
+            pickupLabelObject.transform.localPosition = Vector3.up * 4.25f;
+            TextMeshPro pickupLabel = pickupLabelObject.GetComponent<TextMeshPro>();
+            pickupLabel.fontSize = 3.4f;
+            pickupLabel.alignment = TextAlignmentOptions.Center;
+            pickupLabel.color = new Color(1f, 0.92f, 0.68f, 1f);
+            pickupLabel.outlineWidth = 0.22f;
+            pickupLabel.outlineColor = new Color32(25, 8, 18, 255);
+            pickupLabel.rectTransform.sizeDelta = new Vector2(12f, 2.5f);
+
             // Unity solo admite un LineRenderer por GameObject. El haz y el
             // anillo son piezas independientes para que ambos puedan existir
             // sin dejar el segundo componente nulo durante BuildVisuals.
@@ -481,10 +506,12 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
                 Root = root,
                 Bud = bud,
                 BudRenderer = budRenderer,
+                BudTarget = budTarget,
                 BudLabel = budLabel,
                 Beacon = beacon,
                 Symbol = symbol.transform,
                 SymbolRenderer = symbolRenderer,
+                PickupLabel = pickupLabel,
                 Ring = ring
             };
             visuals[i].BudPetals.AddRange(petals);
@@ -513,6 +540,7 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             // arena. Solo el símbolo botánico y su halo desaparecen al recargar.
             visual.Root.SetActive(true);
             if (visual.Symbol != null) visual.Symbol.gameObject.SetActive(active);
+            if (visual.PickupLabel != null) visual.PickupLabel.gameObject.SetActive(active);
             if (visual.Bud != null) visual.Bud.SetActive(budActive);
             if (visual.BudLabel != null) visual.BudLabel.gameObject.SetActive(budActive);
             if (visual.Beacon != null) visual.Beacon.enabled = budActive;
@@ -539,6 +567,12 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             }
             if (!active) continue;
 
+            if (!visual.WasPickupActive)
+            {
+                visual.WasPickupActive = true;
+                visual.RevealStartedAt = Time.unscaledTime;
+            }
+
             ArenaPickupType type = CurrentTypeAt(i);
             int typeIndex = (int)type;
             Sprite sprite = GetPickupSprite(typeIndex);
@@ -546,15 +580,24 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             {
                 visual.SymbolRenderer.sprite = sprite;
                 visual.Symbol.name = PickupNames[typeIndex];
-                FitSymbolToHeight(visual.Symbol, sprite, 1.65f);
+                FitSymbolToHeight(visual.Symbol, sprite, 3.05f);
             }
+
+            if (visual.PickupLabel != null)
+                visual.PickupLabel.text = GameLocalization.Choose(
+                    $"{PickupNames[typeIndex].ToUpperInvariant()}\nACÉRCATE PARA RECOGER",
+                    $"{PickupNames[typeIndex].ToUpperInvariant()}\nMOVE CLOSER TO COLLECT");
 
             Color color = PickupColors[typeIndex];
             visual.Ring.startColor = color;
             visual.Ring.endColor = color;
             if (visual.Ring.sharedMaterial == null)
                 visual.Ring.sharedMaterial = NewMaterial(color);
+            continue;
         }
+
+        for (int i = 0; i < visuals.Length; i++)
+            if ((mask & (1 << i)) == 0 && visuals[i] != null) visuals[i].WasPickupActive = false;
     }
 
     private void AnimatePowerUpSymbols()
@@ -567,9 +610,14 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
             if (visual == null) continue;
             if (visual.Symbol != null && visual.Symbol.gameObject.activeSelf)
             {
-                visual.Symbol.localPosition = Vector3.up * (1.22f + Mathf.Sin(time * 2f + i * 0.8f) * 0.12f);
+                float reveal = Mathf.Clamp01((time - visual.RevealStartedAt) / 0.55f);
+                visual.Symbol.localPosition = Vector3.up *
+                    (Mathf.Lerp(1.35f, 2.72f, Mathf.SmoothStep(0f, 1f, reveal)) +
+                     Mathf.Sin(time * 2f + i * 0.8f) * 0.12f);
                 if (camera != null)
-                    visual.Symbol.rotation = camera.transform.rotation * Quaternion.Euler(0f, 0f, time * 14f + i * 35f);
+                    visual.Symbol.rotation = camera.transform.rotation;
+                if (camera != null && visual.PickupLabel != null)
+                    visual.PickupLabel.transform.rotation = camera.transform.rotation;
             }
 
             if (visual.Bud != null && visual.Bud.activeSelf)
@@ -639,6 +687,14 @@ public sealed class ArenaPowerUpManager : MonoBehaviour
         presentationSuppressed = value;
         if (corruptionRing != null)
             corruptionRing.gameObject.SetActive(CorruptionActive && !presentationSuppressed);
+    }
+
+    public void NotifyPickupGranted(ArenaPickupType type)
+    {
+        int index = Mathf.Clamp((int)type, 0, PickupNames.Length - 1);
+        pickupToast = GameLocalization.Choose($"OBTUVISTE: {PickupNames[index].ToUpperInvariant()}",
+            $"PICKED UP: {PickupNames[index].ToUpperInvariant()}");
+        pickupToastUntil = Time.unscaledTime + 3.5f;
     }
 
     public static Vector3 PedestalPosition(Vector3 center, int index)

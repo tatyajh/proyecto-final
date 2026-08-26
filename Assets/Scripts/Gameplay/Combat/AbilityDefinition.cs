@@ -66,6 +66,15 @@ namespace Gameplay.Combat
         [Header("Presentación")]
         public Color vfxColor = new Color(0.83f, 0.64f, 0.20f, 0.9f);
         public AudioClip castSfx;
+        [Tooltip("Telegráfico opcional. Si está vacío se genera uno procedural según la forma.")]
+        public GameObject telegraphPrefab;
+        [Tooltip("Proyectil o cuerpo principal opcional del poder.")]
+        public GameObject projectilePrefab;
+        [Tooltip("Impacto opcional. Si está vacío se usa la identidad procedural del personaje.")]
+        public GameObject impactPrefab;
+        [Tooltip("Trigger de Animator. Vacío usa attack/ultimate según el slot.")]
+        public string castAnimationTrigger;
+        public AudioClip impactSfx;
 
         public string DisplayName => GameLocalization.Choose(spanishName, englishName);
     }

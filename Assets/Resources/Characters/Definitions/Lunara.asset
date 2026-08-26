@@ -22,5 +22,8 @@ MonoBehaviour:
   previewYaw: 180
   expectedGameplayHeight: 5.0654445
   modelLocalOffset: {x: 0, y: 0, z: 0}
+  gameplayVisualYaw: 0
+  castOriginHeight: 0.62
+  castForwardOffset: 0.72
   basicAbility: {fileID: 11400000, guid: 9827aa0bf6133134ead0ce92937ef24d, type: 2}
   ultimateAbility: {fileID: 11400000, guid: 3fe333460d71d9f4fb03c940d0bc5e0e, type: 2}

@@ -19,7 +19,7 @@ public static class CharacterPrototypeImporter
 {
     private const string OutputFolder = "Assets/Resources/Characters";
     private const string MaterialOutputFolder = OutputFolder + "/Materials";
-    private const string ImportMarker = "BlightedBlossomsPrototypeCharacterV8";
+    private const string ImportMarker = "BlightedBlossomsPrototypeCharacterV9";
 
     private sealed class CharacterSource
     {
@@ -302,6 +302,12 @@ public static class CharacterPrototypeImporter
     private static void UpgradeMaterialToUrp(Material material)
     {
         if (material == null) return;
+        // No reasignar el shader de un material ya compatible. Cambiar
+        // Standard -> Lit -> Standard durante un refresh hace que Unity 6
+        // remapee _MainTex como _DetailAlbedoMap y deje el personaje sin color.
+        string currentShader = material.shader != null ? material.shader.name : string.Empty;
+        if (currentShader == "Universal Render Pipeline/Lit" || currentShader == "Standard")
+            return;
         Texture albedo = FirstTexture(material, "_BaseMap", "_MainTex");
         Texture normal = FirstTexture(material, "_BumpMap", "_NormalMap");
         Texture metallic = FirstTexture(material, "_MetallicGlossMap", "_MetallicMap");
@@ -494,9 +500,7 @@ public static class CharacterPrototypeImporter
         if (string.IsNullOrEmpty(source.ControllerPath)) return;
 
         AnimatorController existing = AssetDatabase.LoadAssetAtPath<AnimatorController>(source.ControllerPath);
-        if (existing != null && existing.parameters.Any(parameter => parameter.name == "isMoving") &&
-            existing.parameters.Any(parameter => parameter.name == "attack") &&
-            existing.parameters.Any(parameter => parameter.name == "ultimate"))
+        if (existing != null && HasCompleteAnimatorGraph(existing))
         {
             return;
         }
@@ -527,9 +531,10 @@ public static class CharacterPrototypeImporter
         idleState.motion = idle;
         machine.defaultState = idleState;
 
+        AnimatorState walkState = null;
         if (walk != null)
         {
-            AnimatorState walkState = machine.AddState("Move");
+            walkState = machine.AddState("Move");
             walkState.motion = walk;
             AnimatorStateTransition toWalk = idleState.AddTransition(walkState);
             toWalk.hasExitTime = false;
@@ -541,12 +546,34 @@ public static class CharacterPrototypeImporter
             toIdle.AddCondition(AnimatorConditionMode.IfNot, 0f, "isMoving");
         }
 
-        AddActionState(machine, idleState, attack, "Attack", "attack");
-        AddActionState(machine, idleState, ultimate, "Ultimate", "ultimate");
+        AddActionState(machine, idleState, walkState, attack, "Attack", "attack");
+        AddActionState(machine, idleState, walkState, ultimate, "Ultimate", "ultimate");
         EditorUtility.SetDirty(controller);
     }
 
-    private static void AddActionState(AnimatorStateMachine machine, AnimatorState idle,
+    private static bool HasCompleteAnimatorGraph(AnimatorController controller)
+    {
+        if (!controller.parameters.Any(parameter => parameter.name == "isMoving") ||
+            !controller.parameters.Any(parameter => parameter.name == "attack") ||
+            !controller.parameters.Any(parameter => parameter.name == "ultimate"))
+            return false;
+
+        AnimatorStateMachine machine = controller.layers[0].stateMachine;
+        foreach (string actionName in new[] { "Attack", "Ultimate" })
+        {
+            AnimatorState action = machine.states.Select(child => child.state)
+                .FirstOrDefault(state => state.name == actionName);
+            if (action == null) return false;
+            bool returnsToIdle = action.transitions.Any(transition => transition.conditions.Any(condition =>
+                condition.parameter == "isMoving" && condition.mode == AnimatorConditionMode.IfNot));
+            bool returnsToMove = action.transitions.Any(transition => transition.conditions.Any(condition =>
+                condition.parameter == "isMoving" && condition.mode == AnimatorConditionMode.If));
+            if (!returnsToIdle || !returnsToMove) return false;
+        }
+        return true;
+    }
+
+    private static void AddActionState(AnimatorStateMachine machine, AnimatorState idle, AnimatorState move,
         AnimationClip clip, string stateName, string trigger)
     {
         if (clip == null) return;
@@ -560,6 +587,15 @@ public static class CharacterPrototypeImporter
         exit.hasExitTime = true;
         exit.exitTime = 0.92f;
         exit.duration = 0.12f;
+        exit.AddCondition(AnimatorConditionMode.IfNot, 0f, "isMoving");
+        if (move != null)
+        {
+            AnimatorStateTransition resumeMove = state.AddTransition(move);
+            resumeMove.hasExitTime = true;
+            resumeMove.exitTime = 0.92f;
+            resumeMove.duration = 0.10f;
+            resumeMove.AddCondition(AnimatorConditionMode.If, 0f, "isMoving");
+        }
     }
 
     [MenuItem("Blighted Blossoms/Regenerar personajes (forzar)")]

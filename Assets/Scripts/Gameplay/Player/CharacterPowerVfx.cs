@@ -1,103 +1,264 @@
 using System.Collections;
+using System.Collections.Generic;
 using BlightedBlossoms.Gameplay.Vfx;
+using Gameplay.Combat;
 using UnityEngine;
 
 /// <summary>
-/// Selects a reusable power presentation without coupling combat to the old
-/// Character tests scene. Damage and targeting remain authoritative elsewhere.
+/// Presentación procedural por personaje. La resolución del combate sigue en
+/// PlayerController; telegráfico, viaje e impacto parten del mismo CastOrigin.
 /// </summary>
 public sealed class CharacterPowerVfx : MonoBehaviour
 {
-    private const string QuietmorName = "Quietmor";
-    private const string AcatheriaName = "Acatheria";
-    private const string RayPrefabPath = "Vfx/Powers/VisualRayAttack";
+    private readonly List<Material> runtimeMaterials = new List<Material>();
+    private AbilityDefinition ability;
+    private GameObject actor;
+    private Vector3 origin;
+    private Vector3 direction;
+    private Vector3 destination;
+    private int characterIndex;
 
-    public static void Play(
-        GameObject actor,
-        Vector3 origin,
-        Vector3 direction,
-        bool ultimate,
-        int characterIndex,
-        float range)
+    public static void Play(GameObject actor, AbilityDefinition ability, Vector3 origin,
+        Vector3 direction, int characterIndex, float range)
     {
-#if UNITY_EDITOR
-        Debug.Log($"[CharacterPowerVfx] {(ultimate ? "Definitiva" : "Ataque")} " +
-                  $"del personaje {characterIndex} ejecutado.");
-#endif
-        Vector3 normalizedDirection = direction.sqrMagnitude > 0.001f
-            ? direction.normalized
-            : Vector3.forward;
-        GameObject host = new GameObject(ultimate ? "Ultimate Power VFX" : "Basic Power VFX");
-        host.transform.position = origin + normalizedDirection * Mathf.Max(1f, range);
+        if (ability == null) return;
+        Vector3 forward = Vector3.ProjectOnPlane(direction, Vector3.up);
+        if (forward.sqrMagnitude < 0.001f) forward = actor != null ? actor.transform.forward : Vector3.forward;
+        forward.Normalize();
+
+        GameObject host = new GameObject($"{CharacterCatalog.NameOf(characterIndex)} · {ability.DisplayName}");
         CharacterPowerVfx effect = host.AddComponent<CharacterPowerVfx>();
-        effect.StartCoroutine(effect.Run(actor, ultimate, characterIndex));
+        effect.actor = actor;
+        effect.ability = ability;
+        effect.origin = origin;
+        effect.direction = forward;
+        effect.destination = origin + forward * Mathf.Max(1f, range);
+        effect.destination.y = actor != null ? actor.transform.position.y + 0.10f : 0.10f;
+        effect.characterIndex = CharacterCatalog.Clamp(characterIndex);
+        effect.StartCoroutine(effect.Run());
     }
 
-    private IEnumerator Run(GameObject actor, bool ultimate, int characterIndex)
+    private IEnumerator Run()
     {
-        string characterName = CharacterCatalog.NameOf(characterIndex);
-        if (ultimate && characterName == QuietmorName)
-            yield return PlayRayStrike();
-        else if (characterName == AcatheriaName)
+        GameObject telegraph = CreateTelegraph();
+        float warningTime = Mathf.Clamp(ability.castDelay > 0f ? ability.castDelay : 0.22f, 0.16f, 0.8f);
+        yield return FadeTelegraph(telegraph, warningTime);
+
+        if (ability.projectilePrefab != null)
         {
-            if (ultimate)
-                CharacterAuraVfx.Play(actor, new Color(1f, 0.12f, 0.30f, 1f), 2f);
-            yield return PlayPoisonZone(ultimate);
+            GameObject projectile = Instantiate(ability.projectilePrefab, origin,
+                Quaternion.LookRotation(direction), transform);
+            yield return MoveProjectile(projectile.transform, origin, destination, 0.22f);
         }
         else
-            yield return PlayAreaExplosion(ultimate, characterIndex);
+        {
+            yield return PlayIdentityTravel();
+        }
 
+        if (ability.impactPrefab != null)
+            Instantiate(ability.impactPrefab, Ground(destination), Quaternion.identity);
+        else
+            yield return PlayIdentityImpact();
+
+        if (ability.impactSfx != null) AudioCatalog.PlayOneShot(ability.impactSfx, destination);
         Destroy(gameObject);
     }
 
-    private IEnumerator PlayRayStrike()
+    private GameObject CreateTelegraph()
     {
-        GameObject template = Resources.Load<GameObject>(RayPrefabPath);
-        GameObject visual = template != null
-            ? Instantiate(template, transform.position, Quaternion.identity, transform)
-            : new GameObject("Ray Strike Visual");
+        if (ability.telegraphPrefab != null)
+            return Instantiate(ability.telegraphPrefab, Ground(destination), Quaternion.identity, transform);
 
-        if (template == null)
+        GameObject host = new GameObject("Telegráfico");
+        host.transform.SetParent(transform, false);
+        LineRenderer line = host.AddComponent<LineRenderer>();
+        line.useWorldSpace = true;
+        line.loop = ability.shape is AbilityShape.Area or AbilityShape.Leap;
+        line.widthMultiplier = ability.slot == AbilitySlot.Ultimate ? 0.16f : 0.10f;
+        Color color = ability.vfxColor;
+        color.a = 0.72f;
+        line.startColor = line.endColor = color;
+        line.sharedMaterial = NewMaterial(color);
+
+        if (line.loop)
         {
-            visual.transform.SetParent(transform, false);
-            Debug.LogWarning($"[CharacterPowerVfx] No se encontró Resources/{RayPrefabPath}; " +
-                             "el combate continúa sin el arte del rayo.");
+            const int points = 48;
+            line.positionCount = points;
+            float effectRadius = Mathf.Max(0.8f, ability.radius);
+            for (int i = 0; i < points; i++)
+            {
+                float angle = i * Mathf.PI * 2f / points;
+                line.SetPosition(i, Ground(destination) +
+                    new Vector3(Mathf.Cos(angle) * effectRadius, 0.08f, Mathf.Sin(angle) * effectRadius));
+            }
+        }
+        else if (ability.shape == AbilityShape.Cone)
+        {
+            Quaternion left = Quaternion.Euler(0f, -ability.coneAngle * 0.5f, 0f);
+            Quaternion right = Quaternion.Euler(0f, ability.coneAngle * 0.5f, 0f);
+            line.positionCount = 4;
+            line.SetPosition(0, Ground(origin));
+            line.SetPosition(1, Ground(origin + left * direction * ability.range));
+            line.SetPosition(2, Ground(origin + right * direction * ability.range));
+            line.SetPosition(3, Ground(origin));
+        }
+        else if (ability.shape == AbilityShape.Wall)
+        {
+            Vector3 side = Vector3.Cross(Vector3.up, direction).normalized * Mathf.Max(1.5f, ability.radius);
+            line.positionCount = 2;
+            line.SetPosition(0, Ground(destination - side));
+            line.SetPosition(1, Ground(destination + side));
+        }
+        else
+        {
+            line.positionCount = 2;
+            line.SetPosition(0, origin);
+            line.SetPosition(1, destination);
+        }
+        return host;
+    }
+
+    private IEnumerator FadeTelegraph(GameObject telegraph, float duration)
+    {
+        if (telegraph == null) yield break;
+        LineRenderer line = telegraph.GetComponentInChildren<LineRenderer>();
+        for (float elapsed = 0f; elapsed < duration; elapsed += Time.deltaTime)
+        {
+            if (line != null)
+            {
+                Color color = ability.vfxColor;
+                color.a = Mathf.Lerp(0.32f, 0.86f, Mathf.PingPong(elapsed * 5f, 1f));
+                line.startColor = line.endColor = color;
+            }
+            yield return null;
+        }
+        Destroy(telegraph);
+    }
+
+    private IEnumerator PlayIdentityTravel()
+    {
+        Color primary = ability.vfxColor;
+        Color accent;
+        int strands;
+        switch (characterIndex)
+        {
+            case 0: accent = new Color(1f, 0.96f, 0.72f, 0.95f); strands = 5; break;
+            case 1: accent = new Color(0.62f, 0.24f, 1f, 0.95f); strands = 3; break;
+            case 2: accent = new Color(1f, 0.73f, 0.18f, 0.95f); strands = 4; break;
+            case 3: accent = new Color(0.42f, 0.20f, 0.56f, 0.82f); strands = 4; break;
+            case 4: accent = new Color(0.45f, 0.95f, 0.32f, 0.92f); strands = 3; break;
+            default: accent = new Color(0.52f, 0.20f, 0.18f, 0.95f); strands = 7; break;
         }
 
-        RayStrikeVfx ray = visual.GetComponent<RayStrikeVfx>() ?? visual.AddComponent<RayStrikeVfx>();
-        // La última iteración del equipo hace que el impacto nazca concentrado
-        // y se expanda, en lugar de encogerse. Conservamos ese comportamiento
-        // dentro del componente URP reutilizable, sin traer el script de prueba.
-        ray.Configure(0.25f, 0.1f, 2.5f, new Color(1f, 0.74f, 0.47f, 0.9f));
-        ray.Execute();
-        yield return new WaitForSeconds(ray.Duration + 0.1f);
+        GameObject projectile = GameObject.CreatePrimitive(characterIndex == 1
+            ? PrimitiveType.Capsule : PrimitiveType.Sphere);
+        projectile.name = characterIndex == 5 ? "Rosa marchita" : "Cuerpo mágico";
+        projectile.transform.SetParent(transform, true);
+        projectile.transform.position = origin;
+        projectile.transform.localScale = characterIndex == 5
+            ? new Vector3(0.55f, 0.24f, 0.55f)
+            : Vector3.one * (ability.slot == AbilitySlot.Ultimate ? 0.48f : 0.28f);
+        Destroy(projectile.GetComponent<Collider>());
+        projectile.GetComponent<Renderer>().sharedMaterial = NewMaterial(accent);
+
+        for (int i = 0; i < strands; i++)
+        {
+            GameObject petal = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            petal.name = characterIndex == 5 ? "Pétalo de rosa corrupta" : "Pétalo mágico";
+            petal.transform.SetParent(projectile.transform, false);
+            float angle = i * 360f / strands;
+            petal.transform.localPosition = Quaternion.Euler(0f, angle, 0f) * Vector3.forward * 0.72f;
+            petal.transform.localRotation = Quaternion.Euler(35f, angle, 0f);
+            petal.transform.localScale = new Vector3(0.38f, 0.16f, 0.74f);
+            Destroy(petal.GetComponent<Collider>());
+            petal.GetComponent<Renderer>().sharedMaterial = NewMaterial(Color.Lerp(primary, accent, 0.45f));
+        }
+        yield return MoveProjectile(projectile.transform, origin, destination, 0.24f);
     }
 
-    private IEnumerator PlayPoisonZone(bool ultimate)
+    private IEnumerator MoveProjectile(Transform projectile, Vector3 start, Vector3 end, float duration)
     {
-        PoisonZoneVfx poison = gameObject.AddComponent<PoisonZoneVfx>();
-        poison.Configure(
-            ultimate ? 3.2f : 1.35f,
-            ultimate ? 1.5f : 0.65f,
-            new Color(0.38f, 0.72f, 0.22f, 0.72f));
-        poison.Execute();
-        yield return new WaitForSeconds(poison.Duration + 0.1f);
+        if (projectile == null) yield break;
+        for (float elapsed = 0f; elapsed < duration; elapsed += Time.deltaTime)
+        {
+            float t = Mathf.Clamp01(elapsed / duration);
+            projectile.position = Vector3.Lerp(start, end, t);
+            projectile.Rotate(direction, 420f * Time.deltaTime, Space.World);
+            yield return null;
+        }
+        if (projectile != null) Destroy(projectile.gameObject);
     }
 
-    private IEnumerator PlayAreaExplosion(bool ultimate, int characterIndex)
+    private IEnumerator PlayIdentityImpact()
     {
-        Color color = ultimate
-            ? new Color(0.78f, 0.48f, 0.12f, 0.78f)
-            : CharacterCatalog.TintOf(characterIndex);
-        color.a = ultimate ? 0.78f : 0.68f;
+        GameObject impact = new GameObject("Impacto botánico");
+        impact.transform.SetParent(transform, false);
+        impact.transform.position = Ground(destination);
+        Color color = ability.vfxColor;
 
-        AreaExplosionVfx explosion = gameObject.AddComponent<AreaExplosionVfx>();
-        explosion.Configure(
-            ultimate ? 2.8f : 1.25f,
-            ultimate ? 0.65f : 0.35f,
-            ultimate ? 60 : 24,
-            color);
+        if (characterIndex == 3)
+            for (int ring = 0; ring < 3; ring++) CreateRing(impact.transform, ring * 0.55f, color);
+        else if (characterIndex == 5)
+            for (int root = 0; root < 7; root++) CreateRoot(impact.transform, root * 360f / 7f, color);
+
+        AreaExplosionVfx explosion = impact.AddComponent<AreaExplosionVfx>();
+        explosion.Configure(Mathf.Max(1.1f, ability.radius), 0.52f,
+            ability.slot == AbilitySlot.Ultimate ? 72 : 34, color);
         explosion.Execute();
-        yield return new WaitForSeconds(explosion.Duration + 0.1f);
+        if (actor != null && characterIndex == 4)
+            CharacterAuraVfx.Play(actor, new Color(0.30f, 0.92f, 0.32f, 0.9f), 1.2f);
+        yield return new WaitForSeconds(0.62f);
+        Destroy(impact);
+    }
+
+    private void CreateRing(Transform parent, float extraRadius, Color color)
+    {
+        GameObject host = new GameObject("Onda muda");
+        host.transform.SetParent(parent, false);
+        LineRenderer line = host.AddComponent<LineRenderer>();
+        line.loop = true;
+        line.useWorldSpace = false;
+        line.positionCount = 36;
+        line.widthMultiplier = 0.10f;
+        float radius = 0.9f + extraRadius;
+        for (int i = 0; i < 36; i++)
+        {
+            float a = i * Mathf.PI * 2f / 36f;
+            line.SetPosition(i, new Vector3(Mathf.Cos(a) * radius, 0.08f, Mathf.Sin(a) * radius));
+        }
+        line.startColor = line.endColor = color;
+        line.sharedMaterial = NewMaterial(color);
+    }
+
+    private void CreateRoot(Transform parent, float angle, Color color)
+    {
+        GameObject root = new GameObject("Raíz con rosa marchita");
+        root.transform.SetParent(parent, false);
+        LineRenderer line = root.AddComponent<LineRenderer>();
+        line.useWorldSpace = false;
+        line.positionCount = 4;
+        line.widthMultiplier = 0.18f;
+        Vector3 rootDirection = Quaternion.Euler(0f, angle, 0f) * Vector3.forward;
+        for (int i = 0; i < 4; i++)
+            line.SetPosition(i, rootDirection * (i * 0.72f) + Vector3.up * (Mathf.Sin(i * 1.7f) * 0.12f));
+        line.startColor = new Color(0.18f, 0.08f, 0.05f, 0.92f);
+        line.endColor = color;
+        line.sharedMaterial = NewMaterial(color);
+    }
+
+    private Material NewMaterial(Color color)
+    {
+        Material material = PowerVfxUtility.CreateTransparentMaterial(color);
+        runtimeMaterials.Add(material);
+        return material;
+    }
+
+    private static Vector3 Ground(Vector3 value) => new Vector3(value.x, value.y + 0.08f, value.z);
+
+    private void OnDestroy()
+    {
+        foreach (Material material in runtimeMaterials)
+            if (material != null) Destroy(material);
+        runtimeMaterials.Clear();
     }
 }

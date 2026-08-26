@@ -17,7 +17,7 @@ MonoBehaviour:
   englishName: Root Charge
   slot: 0
   shape: 4
-  range: 5.5
+  range: 7
   radius: 1.1
   coneAngle: 55
   castDelay: 0

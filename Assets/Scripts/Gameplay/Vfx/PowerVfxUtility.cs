@@ -5,19 +5,38 @@ namespace BlightedBlossoms.Gameplay.Vfx
 {
     internal static class PowerVfxUtility
     {
+        private const string RuntimeMaterialResource = "Vfx/Powers/RayUltimate";
+        private static Material runtimeTemplate;
+
         public static Material CreateTransparentMaterial(Color color)
         {
-            Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit")
-                            ?? Shader.Find("Universal Render Pipeline/Unlit")
-                            ?? Shader.Find("Particles/Standard Unlit")
-                            ?? Shader.Find("Sprites/Default");
+            // Un material guardado en Resources fuerza a WebGL a conservar el
+            // shader. Shader.Find funcionaba en Editor, pero el stripping del
+            // build podía eliminar todos salvo el material del rayo de
+            // Quietmor, haciendo invisibles los demás poderes.
+            if (runtimeTemplate == null)
+                runtimeTemplate = Resources.Load<Material>(RuntimeMaterialResource);
 
-            Material material = new Material(shader)
+            Material material;
+            if (runtimeTemplate != null)
+                material = new Material(runtimeTemplate);
+            else
             {
-                name = "Runtime Power VFX Material",
-                color = color,
-                renderQueue = (int)RenderQueue.Transparent
-            };
+                Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit")
+                                ?? Shader.Find("Universal Render Pipeline/Unlit")
+                                ?? Shader.Find("Particles/Standard Unlit")
+                                ?? Shader.Find("Sprites/Default");
+                if (shader == null)
+                {
+                    Debug.LogError($"[PowerVfx] No existe Resources/{RuntimeMaterialResource} ni un shader de respaldo.");
+                    return null;
+                }
+                material = new Material(shader);
+            }
+
+            material.name = "Runtime Power VFX Material";
+            material.color = color;
+            material.renderQueue = (int)RenderQueue.Transparent;
 
             if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
             if (material.HasProperty("_Color")) material.SetColor("_Color", color);

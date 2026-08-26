@@ -17,7 +17,7 @@ MonoBehaviour:
   englishName: Pit Bastion
   slot: 1
   shape: 5
-  range: 6
+  range: 8
   radius: 3.5
   coneAngle: 55
   castDelay: 0
